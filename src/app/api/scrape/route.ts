@@ -12,6 +12,8 @@ const MAIN_PATHS = [
   "/case-studies",
   "/all-case-studies",
   "/customer-stories",
+  "/success-stories",
+  "/stories",
   "/pricing",
   "/about",
   "/about-us",
@@ -19,6 +21,19 @@ const MAIN_PATHS = [
 ]
 
 const BLOG_PATHS = ["/blog", "/resources", "/insights", "/learn", "/content", "/articles"]
+
+// Non-standard customer story index paths — companies use all sorts of URL schemes
+const CUSTOMER_INDEX_PATHS = [
+  "/magazine/articles/customer-stories",
+  "/magazine/customers",
+  "/magazine",
+  "/customers/stories",
+  "/resources/customer-stories",
+  "/resources/case-studies",
+  "/blog/customer-stories",
+  "/wins",
+  "/testimonials",
+]
 
 type PageResult =
   | { title: string; text: string; jsonLd: unknown[]; links: string[] }
@@ -151,7 +166,7 @@ function collectLinks(results: readonly (readonly [string, PageResult])[]): stri
 }
 
 function isCaseStudyLink(url: string): boolean {
-  return /case-stud|customer-stor|success-stor|client-stor/.test(url.toLowerCase())
+  return /case-stud|customer-stor|success-stor|client-stor|customer-story|-customer-story|\/magazine\/[^/]+-story/.test(url.toLowerCase())
 }
 
 // Competitor content: "vs" pages, comparison pages, alternatives pages, and blog posts
@@ -177,18 +192,21 @@ export async function POST(req: NextRequest) {
   const mainUrls = MAIN_PATHS.map((p) => `https://${hostname}${p}`)
   const blogUrls = BLOG_PATHS.map((p) => `https://${hostname}${p}`)
 
-  // Phase 1 — main pages + blog index + SaaSHub + sitemap all in parallel
-  const [mainResults, blogIndexResults, saashubText, sitemapText] = await Promise.all([
+  const customerIndexUrls = CUSTOMER_INDEX_PATHS.map((p) => `https://${hostname}${p}`)
+
+  // Phase 1 — main pages + blog index + customer story indexes + SaaSHub + sitemap all in parallel
+  const [mainResults, blogIndexResults, customerIndexResults, saashubText, sitemapText] = await Promise.all([
     Promise.all(mainUrls.map(async (u) => [u, await fetchPage(u)] as const)),
     Promise.all(blogUrls.map(async (u) => [u, await fetchPage(u)] as const)),
+    Promise.all(customerIndexUrls.map(async (u) => [u, await fetchPage(u)] as const)),
     fetchSaasHubCompetitors(hostname),
     fetchSitemap(hostname),
   ])
 
   const crawlOutput = Object.fromEntries(mainResults)
 
-  // Collect all internal links from main pages + blog index + sitemap
-  const allLinks = collectLinks([...mainResults, ...blogIndexResults])
+  // Collect all internal links from main pages + blog index + customer indexes + sitemap
+  const allLinks = collectLinks([...mainResults, ...blogIndexResults, ...customerIndexResults])
   const sitemapLinks = sitemapText.split("\n").filter(Boolean)
 
   const caseStudyLinks = [...new Set([
