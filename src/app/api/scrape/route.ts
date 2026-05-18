@@ -140,10 +140,15 @@ function isCaseStudyLink(url: string): boolean {
   return /case-stud|customer-stor|success-stor|client-stor/.test(url.toLowerCase())
 }
 
-// Competitor blog posts: "vs", "alternatives", "best X tools", "top N", "comparison"
+// Competitor content: "vs" pages, comparison pages, alternatives pages, and blog posts
 function isCompetitorBlogLink(url: string): boolean {
-  return /\/blog\/|\/resources\/|\/insights\/|\/articles\//.test(url.toLowerCase()) &&
-    /\bvs\b|alternat|compari|best[-_\s]\d*[-_\s]?\w+[-_\s]tool|top[-_\s]\d|review/.test(url.toLowerCase())
+  const lower = url.toLowerCase()
+  // Explicit vs/compare/alternative pages anywhere on the site (e.g. /funnel-vs-supermetrics, /vs/supermetrics, /compare/)
+  if (/\/vs[/-]|[/-]vs\/|[/-]vs-|-vs$|\bcompare\b|\/alternat/.test(lower)) return true
+  // Blog/resource articles about comparisons or best-of lists
+  if (/\/blog\/|\/resources\/|\/insights\/|\/articles\//.test(lower) &&
+    /\bvs\b|alternat|compari|best[-_\s]\d*[-_\s]?\w+[-_\s]tool|top[-_\s]\d|review/.test(lower)) return true
+  return false
 }
 
 export async function POST(req: NextRequest) {
