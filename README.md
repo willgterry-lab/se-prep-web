@@ -1,36 +1,110 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SE Prep
 
-## Getting Started
+A web app that helps Solutions Engineers and Presales Engineers prep for discovery and demo calls in minutes.
 
-First, run the development server:
+Paste your product URL. Paste your discovery notes. Get back:
+
+- **MEDDPICC scorecard** — evidence-cited from your own notes, gaps flagged
+- **Matched case studies** — ranked by relevance to the prospect's situation
+- **Follow-up email** — drafted and ready to send
+
+---
+
+## How it works
+
+1. **Product setup (once)** — enter your product's homepage URL. SE Prep crawls the site, extracts your value prop, ICP, pricing tiers, named customers, and case studies. You confirm the competitor list.
+2. **New brief** — enter the prospect's name and paste your raw discovery notes (transcripts, bullets, anything).
+3. **Instant output** — MEDDPICC scoring with verbatim evidence, top 3 case study matches with relevance reasoning, and a follow-up email ready to copy.
+
+Briefs are saved and retrievable. Refresh your product context any time.
+
+---
+
+## Tech stack
+
+- [Next.js](https://nextjs.org) (App Router, TypeScript)
+- [Supabase](https://supabase.com) — auth (magic link) + Postgres
+- [Anthropic Claude](https://anthropic.com) — scraping extraction, MEDDPICC scoring, case study matching, email drafting
+- [Tailwind CSS](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com)
+- [Vercel](https://vercel.com) — deployment
+
+---
+
+## Running locally
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/your-username/se-prep-web
+cd se-prep-web
+npm install
+```
+
+### 2. Set up Supabase
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run `supabase/schema.sql` in the Supabase SQL editor
+3. Copy your project URL and keys
+
+### 3. Environment variables
+
+```bash
+cp .env.example .env.local
+```
+
+Fill in `.env.local`:
+
+```
+ANTHROPIC_API_KEY=               # from console.anthropic.com
+NEXT_PUBLIC_SUPABASE_URL=        # your Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=   # your Supabase anon key
+SUPABASE_SERVICE_ROLE_KEY=       # your Supabase service role key
+```
+
+### 4. Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deploying to Vercel
 
-## Learn More
+```bash
+npx vercel
+```
 
-To learn more about Next.js, take a look at the following resources:
+Add the same environment variables in the Vercel dashboard under **Settings → Environment Variables**.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Set the Supabase auth redirect URL to `https://your-vercel-url.vercel.app/auth/callback` in your Supabase project under **Authentication → URL Configuration**.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Project structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+├── app/
+│   ├── (app)/               # Protected routes (auth required)
+│   │   ├── dashboard/       # Brief list + product context overview
+│   │   ├── setup/           # Product URL → scrape → confirm
+│   │   └── brief/
+│   │       ├── new/         # Discovery notes input
+│   │       └── [id]/        # Brief output: MEDDPICC + cases + email
+│   ├── api/
+│   │   ├── scrape/          # Crawl product site, Claude extraction
+│   │   ├── analyze/         # MEDDPICC + case study match + email
+│   │   └── product-context/ # Save / fetch product context
+│   ├── auth/callback/       # Supabase auth callback
+│   └── login/               # Magic link login
+├── components/
+├── lib/
+│   ├── anthropic.ts         # Anthropic client
+│   └── supabase/            # Browser, server, and middleware clients
+└── types/                   # Shared TypeScript types
+supabase/
+└── schema.sql               # Postgres schema + RLS policies
+```
