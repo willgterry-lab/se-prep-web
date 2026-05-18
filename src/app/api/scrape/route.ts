@@ -20,12 +20,16 @@ const MAIN_PATHS = [
 
 const BLOG_PATHS = ["/blog", "/resources", "/insights", "/learn", "/content", "/articles"]
 
-type PageResult = { title: string; text: string; links: string[] } | { error: string }
+type PageResult =
+  | { title: string; text: string; jsonLd: unknown[]; links: string[] }
+  | { error: string }
 
 async function fetchPage(url: string, timeoutMs = 10000): Promise<PageResult> {
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; SEPrepBot/1.0)" },
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
       signal: AbortSignal.timeout(timeoutMs),
     })
     if (!res.ok) return { error: `HTTP ${res.status}` }
@@ -36,7 +40,17 @@ async function fetchPage(url: string, timeoutMs = 10000): Promise<PageResult> {
     const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i)
     const title = (titleMatch?.[1] || h1Match?.[1] || url).trim()
 
-    const text = html
+    // Extract JSON-LD structured data — present even on JS-rendered pages
+    const jsonLdMatches = [...html.matchAll(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]+?)<\/script>/gi)]
+    const jsonLd = jsonLdMatches.map((m) => {
+      try { return JSON.parse(m[1].trim()) } catch { return null }
+    }).filter(Boolean)
+
+    // Extract meta description as a fallback for text-light pages
+    const metaDesc = html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/i)?.[1] || ""
+    const ogDesc = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/i)?.[1] || ""
+
+    const text = (metaDesc || ogDesc ? `${metaDesc} ${ogDesc}\n\n` : "") + html
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
       .replace(/<[^>]+>/g, " ")
@@ -60,10 +74,34 @@ async function fetchPage(url: string, timeoutMs = 10000): Promise<PageResult> {
       })
       .slice(0, 40)
 
-    return { title, text, links }
+    return { title, text, jsonLd, links }
   } catch (e) {
     return { error: e instanceof Error ? e.message : "fetch failed" }
   }
+}
+
+// Fetch sitemap to discover correct page paths the site actually uses
+async function fetchSitemap(hostname: string): Promise<string> {
+  for (const path of ["/sitemap.xml", "/sitemap_index.xml", "/sitemap"]) {
+    try {
+      const res = await fetch(`https://${hostname}${path}`, {
+        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!res.ok) continue
+      const text = await res.text()
+      if (!text.includes("<loc>")) continue
+      // Return URLs relevant to pricing, customers, case studies, blog
+      const locs = [...text.matchAll(/<loc>([^<]+)<\/loc>/g)]
+        .map((m) => m[1])
+        .filter((u) => /pric|customer|case|success|story|testimonial|blog|resource|insight|learn|about|compan/.test(u.toLowerCase()))
+        .slice(0, 40)
+      return locs.join("\n")
+    } catch {
+      continue
+    }
+  }
+  return ""
 }
 
 // SaaSHub: simple slug-based URL, no category needed, returns 200 for known products
@@ -139,20 +177,28 @@ export async function POST(req: NextRequest) {
   const mainUrls = MAIN_PATHS.map((p) => `https://${hostname}${p}`)
   const blogUrls = BLOG_PATHS.map((p) => `https://${hostname}${p}`)
 
-  // Phase 1 — main pages + blog index + SaaSHub all in parallel
-  const [mainResults, blogIndexResults, saashubText] = await Promise.all([
+  // Phase 1 — main pages + blog index + SaaSHub + sitemap all in parallel
+  const [mainResults, blogIndexResults, saashubText, sitemapText] = await Promise.all([
     Promise.all(mainUrls.map(async (u) => [u, await fetchPage(u)] as const)),
     Promise.all(blogUrls.map(async (u) => [u, await fetchPage(u)] as const)),
     fetchSaasHubCompetitors(hostname),
+    fetchSitemap(hostname),
   ])
 
   const crawlOutput = Object.fromEntries(mainResults)
 
-  // Collect all internal links from main pages + blog index
+  // Collect all internal links from main pages + blog index + sitemap
   const allLinks = collectLinks([...mainResults, ...blogIndexResults])
+  const sitemapLinks = sitemapText.split("\n").filter(Boolean)
 
-  const caseStudyLinks = allLinks.filter(isCaseStudyLink)
-  const competitorBlogLinks = allLinks.filter(isCompetitorBlogLink)
+  const caseStudyLinks = [...new Set([
+    ...allLinks.filter(isCaseStudyLink),
+    ...sitemapLinks.filter(isCaseStudyLink),
+  ])]
+  const competitorBlogLinks = [...new Set([
+    ...allLinks.filter(isCompetitorBlogLink),
+    ...sitemapLinks.filter(isCompetitorBlogLink),
+  ])]
 
   // Phase 2 — case study pages + competitor blog posts in parallel
   const [caseStudyPages, competitorBlogPages] = await Promise.all([
@@ -194,13 +240,13 @@ Extract a JSON object from the crawled pages below. Use this exact shape:
 RULES:
 - Never invent. Missing fields → null or [].
 - one_line_value: exact words from the page, not a paraphrase.
-- pricing_tiers: extract EVERY tier — Starter, Business, Enterprise, Free, Pro, etc. Do not skip any.
-- named_customers: be thorough — include every brand name mentioned in testimonials, logos, case studies, or customer lists across all pages.
-- case_studies: only include if you have both a real URL and real customer name in the crawl output. Do not synthesise.
-- competitor_mentions: extract named competitors from (a) the product site, (b) the GetApp page, and (c) blog posts comparing this product to others. Include everything — deduplicate and normalise names.
+- pricing_tiers: check the jsonLd arrays first (look for OfferCatalog, Offer, or Product schema types) — this is the most reliable source for JS-rendered sites. Then check pricing page text. Extract EVERY tier including any Free plan.
+- named_customers: check jsonLd (mentions of org/company names in FAQPage answers, testimonials etc.), then text. Include every brand cited as a customer or user anywhere in the crawl.
+- case_studies: only include if you have a real URL and real customer name in the crawl. Do not synthesise.
+- competitor_mentions: extract from (a) the product site text, (b) SaaSHub, (c) vs/comparison/alternative pages, (d) blog posts. Deduplicate and normalise.
 
 ---
-MAIN SITE PAGES:
+MAIN SITE PAGES (includes jsonLd structured data per page):
 ${JSON.stringify(crawlOutput, null, 2)}
 
 ---
@@ -218,6 +264,10 @@ ${Object.keys(competitorBlogCrawl).length > 0 ? JSON.stringify(competitorBlogCra
 ---
 SAASHUB ALTERNATIVES PAGE:
 ${saashubText || "Not found — SaaSHub may not list this product yet."}
+
+---
+SITEMAP URLS (use to understand what pages exist — esp. for case studies and pricing):
+${sitemapText || "Not available."}
 
 Return ONLY valid JSON. No prose, no markdown fences.`
 
