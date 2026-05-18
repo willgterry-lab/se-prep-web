@@ -20,20 +20,6 @@ const MAIN_PATHS = [
 
 const BLOG_PATHS = ["/blog", "/resources", "/insights", "/learn", "/content", "/articles"]
 
-// GetApp organises by category — try the most common ones for B2B SaaS
-const GETAPP_CATEGORIES = [
-  "marketing-software",
-  "business-intelligence",
-  "marketing-analytics",
-  "data-integration",
-  "analytics",
-  "project-management",
-  "sales-software",
-  "customer-service",
-  "collaboration",
-  "accounting",
-]
-
 type PageResult = { title: string; text: string; links: string[] } | { error: string }
 
 async function fetchPage(url: string, timeoutMs = 10000): Promise<PageResult> {
@@ -80,52 +66,42 @@ async function fetchPage(url: string, timeoutMs = 10000): Promise<PageResult> {
   }
 }
 
-// Try every common GetApp category until we find one that has competitor data
-async function fetchGetAppCompetitors(companySlug: string): Promise<string> {
+// SaaSHub: simple slug-based URL, no category needed, returns 200 for known products
+async function fetchSaasHubCompetitors(hostname: string): Promise<string> {
+  // Try slug variants: "funnel.io" → "funnel-io", "funnel", "funnel-io" with -io suffix
+  const base = hostname.replace(/^www\./, "")
   const slugVariants = [
-    companySlug,
-    companySlug.replace(/-io$|-hq$|-app$|-co$/, ""),
-    `${companySlug}-io`,
+    base.replace(/\./g, "-"),                          // funnel.io → funnel-io
+    base.replace(/\.[^.]+$/, ""),                      // funnel.io → funnel
+    base.replace(/\.[^.]+$/, "") + "-io",              // funnel → funnel-io (if not already)
   ].filter((s, i, arr) => arr.indexOf(s) === i)
 
-  const attempts: Array<() => Promise<string | null>> = []
-
   for (const slug of slugVariants) {
-    for (const category of GETAPP_CATEGORIES) {
-      const url = `https://www.getapp.com/${category}/a/${slug}/alternatives/`
-      attempts.push(async () => {
-        try {
-          const res = await fetch(url, {
-            headers: { "User-Agent": "Mozilla/5.0 (compatible; SEPrepBot/1.0)" },
-            signal: AbortSignal.timeout(8000),
-          })
-          if (!res.ok) return null
-          const html = await res.text()
-          const text = html
-            .replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 4000)
-          // Only accept if the page actually has alternatives content
-          if (
-            text.toLowerCase().includes("alternative") ||
-            text.toLowerCase().includes("competitor")
-          ) {
-            return text
-          }
-          return null
-        } catch {
-          return null
-        }
+    try {
+      const url = `https://www.saashub.com/${slug}-alternatives`
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(10000),
       })
+      if (!res.ok) continue
+      const html = await res.text()
+      const text = html
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 5000)
+      if (text.toLowerCase().includes("alternative") || text.toLowerCase().includes("similar")) {
+        return text
+      }
+    } catch {
+      continue
     }
   }
-
-  // Run all attempts in parallel and return the first success
-  const results = await Promise.all(attempts.map((fn) => fn()))
-  return results.find((r) => r !== null) ?? ""
+  return ""
 }
 
 function collectLinks(results: readonly (readonly [string, PageResult])[]): string[] {
@@ -159,17 +135,15 @@ export async function POST(req: NextRequest) {
   }
 
   const hostname = new URL(url).hostname
-  // Strip TLD for slug: "funnel.io" → "funnel", "www.hubspot.com" → "hubspot"
-  const companySlug = hostname.replace(/^www\./, "").replace(/\.[^.]+$/, "")
 
   const mainUrls = MAIN_PATHS.map((p) => `https://${hostname}${p}`)
   const blogUrls = BLOG_PATHS.map((p) => `https://${hostname}${p}`)
 
-  // Phase 1 — main pages + blog index + GetApp all in parallel
-  const [mainResults, blogIndexResults, getappText] = await Promise.all([
+  // Phase 1 — main pages + blog index + SaaSHub all in parallel
+  const [mainResults, blogIndexResults, saashubText] = await Promise.all([
     Promise.all(mainUrls.map(async (u) => [u, await fetchPage(u)] as const)),
     Promise.all(blogUrls.map(async (u) => [u, await fetchPage(u)] as const)),
-    fetchGetAppCompetitors(companySlug),
+    fetchSaasHubCompetitors(hostname),
   ])
 
   const crawlOutput = Object.fromEntries(mainResults)
@@ -213,7 +187,7 @@ Extract a JSON object from the crawled pages below. Use this exact shape:
       "summary": "one sentence — key result, prefer a specific metric"
     }
   ],
-  "competitor_mentions": ["all named competitor/alternative products from any source"],
+  "competitor_mentions": ["all named competitor/alternative products from any source — product site, SaaSHub, vs pages, blog posts"],
   "crawled_at": "${new Date().toISOString()}"
 }
 
@@ -242,8 +216,8 @@ COMPETITOR BLOG POSTS (vs / alternatives / best-X-tools articles):
 ${Object.keys(competitorBlogCrawl).length > 0 ? JSON.stringify(competitorBlogCrawl, null, 2) : "None found."}
 
 ---
-GETAPP ALTERNATIVES PAGE:
-${getappText || "Not found — GetApp may not list this product, or it uses a different slug."}
+SAASHUB ALTERNATIVES PAGE:
+${saashubText || "Not found — SaaSHub may not list this product yet."}
 
 Return ONLY valid JSON. No prose, no markdown fences.`
 
