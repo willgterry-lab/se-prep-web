@@ -39,7 +39,7 @@ type PageResult =
   | { title: string; text: string; jsonLd: unknown[]; links: string[] }
   | { error: string }
 
-async function fetchPage(url: string, timeoutMs = 10000): Promise<PageResult> {
+async function fetchPage(url: string, timeoutMs = 10000, maxLinks = 60): Promise<PageResult> {
   try {
     const res = await fetch(url, {
       headers: {
@@ -90,7 +90,7 @@ async function fetchPage(url: string, timeoutMs = 10000): Promise<PageResult> {
           if (!l) return false
           try { return new URL(l).hostname === hostname } catch { return false }
         })
-    )].slice(0, 60)
+    )].slice(0, maxLinks)
 
     return { title, text, jsonLd, links }
   } catch (e) {
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
   const [mainResults, blogIndexResults, customerIndexResults, saashubText, sitemapText] = await Promise.all([
     Promise.all(mainUrls.map(async (u) => [u, await fetchPage(u)] as const)),
     Promise.all(blogUrls.map(async (u) => [u, await fetchPage(u)] as const)),
-    Promise.all(customerIndexUrls.map(async (u) => [u, await fetchPage(u)] as const)),
+    Promise.all(customerIndexUrls.map(async (u) => [u, await fetchPage(u, 10000, 300)] as const)),
     fetchSaasHubCompetitors(hostname),
     fetchSitemap(hostname),
   ])
