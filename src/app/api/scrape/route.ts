@@ -78,16 +78,19 @@ async function fetchPage(url: string, timeoutMs = 10000): Promise<PageResult> {
       .slice(0, 3000)
 
     const hostname = new URL(url).hostname
+    // Extract links from raw HTML (before script stripping) — RSC/Next.js apps
+    // embed hrefs inside script payloads which would be lost after stripping
     const linkMatches = [...html.matchAll(/href=["']([^"'#?][^"']*?)["']/g)]
-    const links = linkMatches
-      .map((m) => {
-        try { return new URL(m[1], url).toString() } catch { return null }
-      })
-      .filter((l): l is string => {
-        if (!l) return false
-        try { return new URL(l).hostname === hostname } catch { return false }
-      })
-      .slice(0, 40)
+    const links = [...new Set(
+      linkMatches
+        .map((m) => {
+          try { return new URL(m[1], url).toString() } catch { return null }
+        })
+        .filter((l): l is string => {
+          if (!l) return false
+          try { return new URL(l).hostname === hostname } catch { return false }
+        })
+    )].slice(0, 60)
 
     return { title, text, jsonLd, links }
   } catch (e) {
