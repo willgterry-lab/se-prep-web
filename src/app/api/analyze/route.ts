@@ -1,16 +1,19 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { anthropic, MODEL } from "@/lib/anthropic"
 import type { ProductContext, MeddpiccScore, MatchedCaseStudy } from "@/types"
 
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return new Response("Unauthorized", { status: 401 })
 
   const { discovery_notes, prospect_name, prospect_company } = await req.json()
 
-  // Load the user's product context
   const { data: ctx } = await supabase
     .from("product_contexts")
     .select("*")
@@ -18,48 +21,74 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (!ctx) {
-    return NextResponse.json(
-      { error: "No product context found. Please complete setup first." },
+    return new Response(
+      JSON.stringify({ type: "error", message: "No product context found. Please complete setup first." }),
       { status: 400 }
     )
   }
 
   const product = ctx as ProductContext
 
-  // Run MEDDPICC scoring and case study matching in parallel
-  const [meddpiccRes, caseStudyRes] = await Promise.all([
-    scoreMeddpicc(discovery_notes, product, prospect_company),
-    matchCaseStudies(discovery_notes, product),
-  ])
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (event: object) =>
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"))
 
-  // Draft the follow-up email
-  const email = await draftEmail({
-    prospect_name,
-    prospect_company,
-    discovery_notes,
-    product,
-    meddpicc: meddpiccRes,
-    matched_case_studies: caseStudyRes,
+      try {
+        const [meddpicc, caseStudies] = await Promise.all([
+          scoreMeddpicc(discovery_notes, product, prospect_company).then((result) => {
+            emit({ type: "meddpicc", data: result })
+            return result
+          }),
+          matchCaseStudies(discovery_notes, product).then((result) => {
+            emit({ type: "case_studies", data: result })
+            return result
+          }),
+        ])
+
+        const email = await draftEmail({
+          prospect_name,
+          prospect_company,
+          discovery_notes,
+          product,
+          meddpicc,
+          matched_case_studies: caseStudies,
+        })
+        emit({ type: "email", data: email })
+
+        const { data: brief, error } = await supabase
+          .from("briefs")
+          .insert({
+            user_id: user.id,
+            prospect_name,
+            prospect_company,
+            discovery_notes,
+            meddpicc,
+            matched_case_studies: caseStudies,
+            follow_up_email: email,
+          })
+          .select()
+          .single()
+
+        if (error) {
+          emit({ type: "error", message: error.message })
+        } else {
+          emit({ type: "done", data: { brief_id: brief.id } })
+        }
+      } catch (e) {
+        emit({ type: "error", message: e instanceof Error ? e.message : "Something went wrong." })
+      } finally {
+        controller.close()
+      }
+    },
   })
 
-  // Save brief
-  const { data: brief, error } = await supabase
-    .from("briefs")
-    .insert({
-      user_id: user.id,
-      prospect_name,
-      prospect_company,
-      discovery_notes,
-      meddpicc: meddpiccRes,
-      matched_case_studies: caseStudyRes,
-      follow_up_email: email,
-    })
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ brief })
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "X-Content-Type-Options": "nosniff",
+    },
+  })
 }
 
 async function scoreMeddpicc(
@@ -67,7 +96,13 @@ async function scoreMeddpicc(
   product: ProductContext,
   prospect_company: string
 ): Promise<MeddpiccScore> {
-  const prompt = `You are an expert sales coach scoring a discovery call using the MEDDPICC framework.
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 2048,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert sales coach scoring a discovery call using the MEDDPICC framework.
 
 Product being sold: ${product.company} — ${product.one_line_value}
 Prospect company: ${prospect_company}
@@ -98,15 +133,14 @@ Return ONLY valid JSON in this exact shape:
 Rules:
 - Evidence must be verbatim quotes from the notes, not paraphrases.
 - Gaps should be specific questions the SE should ask next.
-- Never fabricate evidence.`
-
-  const message = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 2048,
-    messages: [{ role: "user", content: prompt }],
+- Never fabricate evidence.`,
+      },
+    ],
   })
 
-  return parseJson<MeddpiccScore>(message.content[0].type === "text" ? message.content[0].text : "{}")
+  return parseJson<MeddpiccScore>(
+    message.content[0].type === "text" ? message.content[0].text : "{}"
+  )
 }
 
 async function matchCaseStudies(
@@ -115,7 +149,13 @@ async function matchCaseStudies(
 ): Promise<MatchedCaseStudy[]> {
   if (!product.case_studies?.length) return []
 
-  const prompt = `You are an expert at matching customer case studies to prospect situations.
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert at matching customer case studies to prospect situations.
 
 Discovery notes from a prospect call:
 ${notes}
@@ -139,15 +179,14 @@ Return ONLY valid JSON array:
   }
 ]
 
-Order by relevance_score descending. Only include case studies from the provided list.`
-
-  const message = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    messages: [{ role: "user", content: prompt }],
+Order by relevance_score descending. Only include case studies from the provided list.`,
+      },
+    ],
   })
 
-  return parseJson<MatchedCaseStudy[]>(message.content[0].type === "text" ? message.content[0].text : "[]")
+  return parseJson<MatchedCaseStudy[]>(
+    message.content[0].type === "text" ? message.content[0].text : "[]"
+  )
 }
 
 async function draftEmail({
@@ -167,7 +206,13 @@ async function draftEmail({
 }): Promise<string> {
   const topCase = matched_case_studies[0]
 
-  const prompt = `You are an expert B2B sales writer. Draft a follow-up email from the SE to the prospect after a discovery call.
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert B2B sales writer. Draft a follow-up email from the SE to the prospect after a discovery call.
 
 Product: ${product.company} — ${product.one_line_value}
 Prospect name: ${prospect_name}
@@ -185,12 +230,9 @@ Rules:
 - Include one case study reference if available — one sentence, outcome + metric.
 - Clear next step as the CTA.
 - Under 200 words.
-- Format: Subject line on first line, blank line, then body.`
-
-  const message = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 512,
-    messages: [{ role: "user", content: prompt }],
+- Format: Subject line on first line, blank line, then body.`,
+      },
+    ],
   })
 
   return message.content[0].type === "text" ? message.content[0].text : ""
