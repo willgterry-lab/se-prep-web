@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,15 +22,16 @@ type StreamState = {
   error: string | null
 }
 
+type UploadedFile = {
+  id: string
+  name: string
+  status: "extracting" | "done" | "error"
+  error?: string
+}
+
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
-function StepRow({
-  label,
-  status,
-}: {
-  label: string
-  status: "pending" | "active" | "done"
-}) {
+function StepRow({ label, status }: { label: string; status: "pending" | "active" | "done" }) {
   return (
     <div className="flex items-center gap-3">
       <span className="w-4 flex justify-center">
@@ -49,22 +50,14 @@ function StepRow({
           <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
         )}
       </span>
-      <span
-        className={`text-sm ${
-          status === "done"
-            ? "text-gray-500 line-through"
-            : status === "active"
-            ? "font-medium text-gray-900"
-            : "text-gray-400"
-        }`}
-      >
+      <span className={`text-sm ${status === "done" ? "text-gray-500 line-through" : status === "active" ? "font-medium text-gray-900" : "text-gray-400"}`}>
         {label}
       </span>
     </div>
   )
 }
 
-// ─── Preview cards ────────────────────────────────────────────────────────────
+// ─── Streaming preview components ────────────────────────────────────────────
 
 const MEDDPICC_LABELS: Record<string, string> = {
   metrics: "Metrics",
@@ -96,8 +89,7 @@ function MeddpiccPreview({ score }: { score: MeddpiccScore }) {
         <div className="flex items-center justify-between">
           <CardTitle>MEDDPICC</CardTitle>
           <div className="text-2xl font-bold">
-            {score.overall_score}
-            <span className="text-sm font-normal text-gray-400">/24</span>
+            {score.overall_score}<span className="text-sm font-normal text-gray-400">/24</span>
           </div>
         </div>
         <CardDescription>{score.summary}</CardDescription>
@@ -115,9 +107,7 @@ function MeddpiccPreview({ score }: { score: MeddpiccScore }) {
               {el.evidence && el.evidence !== "none" && (
                 <p className="text-xs text-gray-600 mb-0.5">&ldquo;{el.evidence}&rdquo;</p>
               )}
-              {el.gap && (
-                <p className="text-xs text-gray-400">Gap: {el.gap}</p>
-              )}
+              {el.gap && <p className="text-xs text-gray-400">Gap: {el.gap}</p>}
             </div>
           )
         })}
@@ -129,24 +119,17 @@ function MeddpiccPreview({ score }: { score: MeddpiccScore }) {
 function CaseStudiesPreview({ studies }: { studies: MatchedCaseStudy[] }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Case studies</CardTitle>
-      </CardHeader>
+      <CardHeader><CardTitle>Case studies matched</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         {studies.map((cs, i) => (
           <div key={i} className="space-y-1">
             <div className="flex items-center gap-2">
               <Badge variant="outline">{cs.industry}</Badge>
-              <a
-                href={cs.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-medium hover:underline"
-              >
+              <a href={cs.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:underline">
                 {cs.customer}
               </a>
             </div>
-            <p className="text-xs text-blue-600 italic">{cs.relevance_reason}</p>
+            <p className="text-xs text-blue-600">{cs.relevance_reason}</p>
           </div>
         ))}
       </CardContent>
@@ -171,15 +154,60 @@ function EmailPreview({ email }: { email: string }) {
   )
 }
 
+// ─── File status row ──────────────────────────────────────────────────────────
+
+function FileRow({ file, onRemove }: { file: UploadedFile; onRemove: () => void }) {
+  return (
+    <div className="flex items-center justify-between text-sm py-1.5">
+      <div className="flex items-center gap-2 min-w-0">
+        {file.status === "extracting" && (
+          <svg className="w-3.5 h-3.5 text-gray-400 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+        )}
+        {file.status === "done" && (
+          <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+        {file.status === "error" && (
+          <svg className="w-3.5 h-3.5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        )}
+        <span className="truncate text-gray-700">{file.name}</span>
+        {file.status === "error" && file.error && (
+          <span className="text-red-500 text-xs shrink-0">{file.error}</span>
+        )}
+      </div>
+      {file.status !== "extracting" && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-gray-300 hover:text-gray-500 ml-2 shrink-0"
+          aria-label="Remove"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function NewBriefPage() {
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [form, setForm] = useState({
     prospect_name: "",
     prospect_company: "",
     discovery_notes: "",
   })
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  const [dragging, setDragging] = useState(false)
   const [stream, setStream] = useState<StreamState>({
     phase: "form",
     meddpicc: null,
@@ -188,14 +216,87 @@ export default function NewBriefPage() {
     error: null,
   })
 
+  function setNotes(updater: string | ((prev: string) => string)) {
+    setForm((prev) => ({
+      ...prev,
+      discovery_notes: typeof updater === "function" ? updater(prev.discovery_notes) : updater,
+    }))
+  }
+
   function set(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  function stepStatus(
-    key: "meddpicc" | "case_studies" | "email",
-    state: StreamState
-  ): "pending" | "active" | "done" {
+  async function processFiles(files: File[]) {
+    const allowed = files.filter((f) =>
+      f.name.toLowerCase().endsWith(".pdf") ||
+      f.name.toLowerCase().endsWith(".docx") ||
+      f.name.toLowerCase().endsWith(".txt")
+    )
+    if (!allowed.length) return
+
+    const entries: UploadedFile[] = allowed.map((f) => ({
+      id: `${f.name}-${Date.now()}-${Math.random()}`,
+      name: f.name,
+      status: "extracting",
+    }))
+    setUploadedFiles((prev) => [...prev, ...entries])
+
+    await Promise.all(
+      allowed.map(async (file, i) => {
+        const id = entries[i].id
+        try {
+          const fd = new FormData()
+          fd.append("file", file)
+          const res = await fetch("/api/extract-text", { method: "POST", body: fd })
+          const data = await res.json()
+
+          if (res.ok) {
+            setNotes((prev) =>
+              prev ? `${prev}\n\n--- ${file.name} ---\n${data.text}` : `--- ${file.name} ---\n${data.text}`
+            )
+            setUploadedFiles((prev) =>
+              prev.map((f) => (f.id === id ? { ...f, status: "done" } : f))
+            )
+          } else {
+            setUploadedFiles((prev) =>
+              prev.map((f) => (f.id === id ? { ...f, status: "error", error: data.error } : f))
+            )
+          }
+        } catch {
+          setUploadedFiles((prev) =>
+            prev.map((f) => (f.id === id ? { ...f, status: "error", error: "Upload failed" } : f))
+          )
+        }
+      })
+    )
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false)
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(false)
+    processFiles(Array.from(e.dataTransfer.files))
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    processFiles(Array.from(e.target.files ?? []))
+    e.target.value = ""
+  }
+
+  function removeFile(id: string) {
+    setUploadedFiles((prev) => prev.filter((f) => f.id !== id))
+  }
+
+  function stepStatus(key: "meddpicc" | "case_studies" | "email", state: StreamState): "pending" | "active" | "done" {
     if (key === "meddpicc") {
       if (state.meddpicc) return "done"
       if (state.phase === "streaming") return "active"
@@ -269,17 +370,19 @@ export default function NewBriefPage() {
   // ── Form ──────────────────────────────────────────────────────────────────
 
   if (stream.phase === "form") {
+    const hasExtracting = uploadedFiles.some((f) => f.status === "extracting")
+
     return (
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold">New prep brief</h1>
           <p className="text-gray-500 mt-1">
-            Paste your discovery notes and we&apos;ll generate MEDDPICC scoring, case study
-            matches, and a follow-up email.
+            Paste your discovery notes, or upload transcripts and files — then generate your brief.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Prospect details */}
           <Card>
             <CardHeader>
               <CardTitle>Prospect details</CardTitle>
@@ -308,20 +411,59 @@ export default function NewBriefPage() {
             </CardContent>
           </Card>
 
+          {/* Discovery notes */}
           <Card>
             <CardHeader>
               <CardTitle>Discovery notes</CardTitle>
               <CardDescription>
-                Paste raw notes from your call — transcripts, bullet points, anything. The more
-                detail, the better the MEDDPICC score.
+                Upload files, drag and drop, or paste directly. Multiple files supported — all text is combined.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Drop zone */}
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`rounded-lg border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-colors ${
+                  dragging
+                    ? "border-black bg-gray-50"
+                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50/50"
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.txt"
+                  onChange={handleFileInput}
+                  className="hidden"
+                />
+                <p className="text-sm text-gray-500">
+                  Drop files here or{" "}
+                  <span className="text-black font-medium underline underline-offset-2">
+                    browse to upload
+                  </span>
+                </p>
+                <p className="text-xs text-gray-400 mt-1">PDF, DOCX, TXT — multiple files supported</p>
+              </div>
+
+              {/* File list */}
+              {uploadedFiles.length > 0 && (
+                <div className="divide-y rounded-md border px-3">
+                  {uploadedFiles.map((file) => (
+                    <FileRow key={file.id} file={file} onRemove={() => removeFile(file.id)} />
+                  ))}
+                </div>
+              )}
+
+              {/* Notes textarea */}
               <Textarea
-                placeholder="Spoke with Jane (VP Marketing). They're currently using Supermetrics but frustrated with the refresh lag — 'we're making budget decisions on yesterday's data'. CFO is the economic buyer. Evaluation wraps end of Q3..."
+                placeholder="Or paste notes directly — transcripts, bullet points, anything. The more detail, the better the MEDDPICC score."
                 value={form.discovery_notes}
-                onChange={(e) => set("discovery_notes", e.target.value)}
-                rows={12}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={10}
                 required
               />
             </CardContent>
@@ -329,8 +471,8 @@ export default function NewBriefPage() {
 
           {stream.error && <p className="text-sm text-red-600">{stream.error}</p>}
 
-          <Button type="submit" className="w-full" size="lg">
-            Generate prep brief
+          <Button type="submit" className="w-full" size="lg" disabled={hasExtracting}>
+            {hasExtracting ? "Extracting files…" : "Generate prep brief"}
           </Button>
         </form>
       </div>
@@ -348,7 +490,6 @@ export default function NewBriefPage() {
         <p className="text-gray-500 mt-1 text-sm">Generating your prep brief…</p>
       </div>
 
-      {/* Progress steps */}
       <Card>
         <CardContent className="pt-6 space-y-3">
           <StepRow label="Scoring MEDDPICC" status={stepStatus("meddpicc", stream)} />
@@ -357,7 +498,6 @@ export default function NewBriefPage() {
         </CardContent>
       </Card>
 
-      {/* Results appear as they arrive */}
       {stream.meddpicc && <MeddpiccPreview score={stream.meddpicc} />}
       {stream.caseStudies && <CaseStudiesPreview studies={stream.caseStudies} />}
       {stream.email && <EmailPreview email={stream.email} />}
