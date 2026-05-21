@@ -72,11 +72,28 @@ function caseStudiesToText(studies: MatchedCaseStudy[]): string {
     .join("\n\n")
 }
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/gs, "$1")
+    .replace(/\*(.*?)\*/gs, "$1")
+    .replace(/_(.*?)_/gs, "$1")
+}
+
+function elementToText(
+  label: string,
+  el: { score: number; evidence: string; gap: string }
+): string {
+  const lines = [`${label} (${el.score}/3)`]
+  if (el.evidence && el.evidence !== "none") lines.push(`Evidence: "${el.evidence}"`)
+  if (el.gap) lines.push(`Gap: ${el.gap}`)
+  return lines.join("\n")
+}
+
 function buildEmailText(
   rawEmail: string,
   selected: MatchedCaseStudy[]
 ): string {
-  const body = rawEmail.split("\n").slice(2).join("\n").trim()
+  const body = stripMarkdown(rawEmail.split("\n").slice(2).join("\n").trim())
   if (!selected.length) return body
   const links = selected
     .map((cs) => `  • ${cs.customer}: ${cs.url}`)
@@ -199,7 +216,10 @@ export function BriefView({ brief }: { brief: Brief }) {
                       <span className="font-medium text-sm">
                         {MEDDPICC_LABELS[key]}
                       </span>
-                      <ScorePip score={element.score} />
+                      <div className="flex items-center gap-2">
+                        <ScorePip score={element.score} />
+                        <CopyButton text={elementToText(MEDDPICC_LABELS[key], element)} />
+                      </div>
                     </div>
                     {element.evidence && element.evidence !== "none" && (
                       <p className="text-sm text-gray-600 mb-1">
