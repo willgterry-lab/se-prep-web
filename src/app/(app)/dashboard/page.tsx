@@ -3,6 +3,7 @@ import Link from "next/link"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { DeleteAccountButton } from "@/components/delete-account-button"
 import { cn } from "@/lib/utils"
 import type { ProductContext, Brief } from "@/types"
 
@@ -112,6 +113,21 @@ export default async function DashboardPage() {
             ))}
           </div>
         )}
+      </div>
+      {/* Danger zone */}
+      <div>
+        <Card className="border-red-100">
+          <CardHeader>
+            <CardTitle className="text-base text-red-700">Danger zone</CardTitle>
+            <CardDescription>
+              Permanently delete your account and all data — briefs, transcripts, and product
+              context. This cannot be undone.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DeleteAccountButton />
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

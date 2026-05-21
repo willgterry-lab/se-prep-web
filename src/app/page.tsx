@@ -107,7 +107,10 @@ export default async function LandingPage() {
       {/* Footer */}
       <footer className="border-t py-6 text-center">
         <p className="text-xs text-gray-400">
-          SE Prep · Built for Solutions Engineers
+          SE Prep · Built for Solutions Engineers ·{" "}
+          <Link href="/privacy" className="underline hover:text-gray-600">
+            Privacy policy
+          </Link>
         </p>
       </footer>
     </div>

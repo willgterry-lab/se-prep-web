@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { CopyButton } from "@/components/copy-button"
+import { DeleteBriefButton } from "@/components/delete-brief-button"
 import { cn } from "@/lib/utils"
 import type { Brief, MeddpiccScore, MatchedCaseStudy } from "@/types"
 
@@ -152,10 +153,11 @@ export default async function BriefPage({ params }: { params: Promise<{ id: stri
         </Card>
       )}
 
-      <div className="pb-8">
+      <div className="pb-8 flex items-center justify-between">
         <Link href="/dashboard" className={cn(buttonVariants({ variant: "outline" }))}>
           ← Back to dashboard
         </Link>
+        <DeleteBriefButton briefId={brief.id} />
       </div>
     </div>
   )
