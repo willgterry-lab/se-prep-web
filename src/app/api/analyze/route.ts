@@ -175,6 +175,7 @@ Return ONLY valid JSON array:
     "headline_pain": "exact headline_pain",
     "summary": "exact summary",
     "relevance_reason": "one sentence — why this resonates with this specific prospect",
+    "one_liner": "one polished, email-ready sentence an SE would drop into a follow-up email referencing this case study — name the customer, the outcome achieved, and tie it to the prospect's situation. Under 30 words.",
     "relevance_score": 1-10
   }
 ]

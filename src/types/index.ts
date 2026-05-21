@@ -44,6 +44,7 @@ export interface MeddpiccScore {
 export interface MatchedCaseStudy extends CaseStudy {
   relevance_reason: string
   relevance_score: number
+  one_liner?: string
 }
 
 export interface Brief {

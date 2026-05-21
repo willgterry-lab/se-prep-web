@@ -202,7 +202,7 @@ export function BriefView({ brief }: { brief: Brief }) {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>MEDDPICC breakdown</CardTitle>
-                <CopyButton text={meddpiccToText(m)} />
+                <CopyButton text={meddpiccToText(m)} label="Copy all" />
               </div>
             </CardHeader>
             <CardContent className="divide-y">
@@ -282,6 +282,16 @@ export function BriefView({ brief }: { brief: Brief }) {
                     <p className="text-xs text-blue-600 italic">
                       {cs.relevance_reason}
                     </p>
+                    {cs.one_liner && (
+                      <div className="flex items-start justify-between gap-3 rounded-md bg-gray-50 border px-3 py-2 mt-2">
+                        <p className="text-xs text-gray-700 leading-relaxed">
+                          &ldquo;{cs.one_liner}&rdquo;
+                        </p>
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <CopyButton text={cs.one_liner} />
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </label>
                 {i < allStudies.length - 1 && <Separator className="mt-4" />}
