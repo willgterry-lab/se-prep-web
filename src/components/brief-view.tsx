@@ -74,9 +74,9 @@ function caseStudiesToText(studies: MatchedCaseStudy[]): string {
 
 function stripMarkdown(text: string): string {
   return text
-    .replace(/\*\*(.*?)\*\*/gs, "$1")
-    .replace(/\*(.*?)\*/gs, "$1")
-    .replace(/_(.*?)_/gs, "$1")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/_(.*?)_/g, "$1")
 }
 
 function elementToText(
