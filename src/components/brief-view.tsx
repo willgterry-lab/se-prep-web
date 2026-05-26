@@ -94,11 +94,18 @@ function buildEmailText(
   selected: MatchedCaseStudy[]
 ): string {
   const body = stripMarkdown(rawEmail.split("\n").slice(2).join("\n").trim())
-  if (!selected.length) return body
-  const links = selected
-    .map((cs) => `  • ${cs.customer}: ${cs.url}`)
-    .join("\n")
-  return `${body}\n\n---\nCase studies referenced:\n${links}`
+
+  const parts: string[] = [body]
+
+  const oneLiners = selected.filter((cs) => cs.one_liner).map((cs) => cs.one_liner!)
+  if (oneLiners.length) parts.push(oneLiners.join("\n"))
+
+  if (selected.length) {
+    const links = selected.map((cs) => `  • ${cs.customer}: ${cs.url}`).join("\n")
+    parts.push(`---\nCase studies referenced:\n${links}`)
+  }
+
+  return parts.join("\n\n")
 }
 
 function buildMailtoHref(rawEmail: string, selected: MatchedCaseStudy[]): string {

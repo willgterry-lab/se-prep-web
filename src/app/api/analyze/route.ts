@@ -205,8 +205,6 @@ async function draftEmail({
   meddpicc: MeddpiccScore
   matched_case_studies: MatchedCaseStudy[]
 }): Promise<string> {
-  const topCase = matched_case_studies[0]
-
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 512,
@@ -220,7 +218,6 @@ Prospect name: ${prospect_name}
 Prospect company: ${prospect_company}
 Deal summary: ${meddpicc.summary}
 Identified pain: ${meddpicc.identify_pain.evidence}
-${topCase ? `Most relevant case study: ${topCase.customer} (${topCase.industry}) — ${topCase.summary}` : ""}
 
 Discovery notes:
 ${discovery_notes}
@@ -228,7 +225,7 @@ ${discovery_notes}
 Rules:
 - Plain, specific, no marketing clichés.
 - Reference their specific pain using their own words from the discovery notes.
-- Include one case study reference if available — one sentence, outcome + metric.
+- Do NOT include any case study references or examples — those are added separately.
 - Clear next step as the CTA.
 - Under 200 words.
 - Format: Subject line on first line, blank line, then body.`,
