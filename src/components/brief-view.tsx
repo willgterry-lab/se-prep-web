@@ -9,12 +9,12 @@ import { Separator } from "@/components/ui/separator"
 import { CopyButton } from "@/components/copy-button"
 import { DeleteBriefButton } from "@/components/delete-brief-button"
 import { cn } from "@/lib/utils"
-import type { Brief, MeddpiccScore, MatchedCaseStudy } from "@/types"
+import type { Brief, MeddpiccScore, MatchedCaseStudy, SuggestedQuestions } from "@/types"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MEDDPICC_LABELS: Record<
-  keyof Omit<MeddpiccScore, "overall_score" | "summary">,
+  keyof Omit<MeddpiccScore, "overall_score" | "summary" | "suggested_questions">,
   string
 > = {
   metrics: "Metrics",
@@ -128,6 +128,39 @@ function buildMailtoHref(rawEmail: string, selected: MatchedCaseStudy[]): string
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
+// ─── Suggested questions card ─────────────────────────────────────────────────
+
+const QUESTION_SECTIONS: { key: keyof SuggestedQuestions; label: string }[] = [
+  { key: "sc_intro", label: "Opening the call" },
+  { key: "discovery", label: "Deeper discovery" },
+  { key: "technical", label: "Technical deep dive" },
+]
+
+function SuggestedQuestionsCard({ questions }: { questions: SuggestedQuestions }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Suggested questions</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {QUESTION_SECTIONS.map(({ key, label }) => (
+          <div key={key}>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{label}</p>
+            <ul className="space-y-2">
+              {questions[key].map((q, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="text-gray-300 text-sm font-medium mt-0.5 shrink-0">{i + 1}.</span>
+                  <p className="text-sm text-gray-700">{q}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function BriefView({ brief }: { brief: Brief }) {
@@ -167,7 +200,7 @@ export function BriefView({ brief }: { brief: Brief }) {
       parts.push("── Case studies ──\n\n" + caseStudiesToText(selectedStudies.length ? selectedStudies : allStudies))
     }
     if (brief.follow_up_email) {
-      parts.push(`── Follow-up email ──\n\n${brief.follow_up_email.split("\n")[0]}\n\n${emailText}`)
+      parts.push(`── Intro email ──\n\n${brief.follow_up_email.split("\n")[0]}\n\n${emailText}`)
     }
     return parts.join("\n\n\n")
   }, [m, allStudies, selectedStudies, brief.follow_up_email, emailText])
@@ -259,6 +292,11 @@ export function BriefView({ brief }: { brief: Brief }) {
               })}
             </CardContent>
           </Card>
+
+          {/* Suggested questions */}
+          {m.suggested_questions && (
+            <SuggestedQuestionsCard questions={m.suggested_questions} />
+          )}
         </>
       )}
 
@@ -328,7 +366,7 @@ export function BriefView({ brief }: { brief: Brief }) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Follow-up email</CardTitle>
+                <CardTitle>Intro email</CardTitle>
                 <p className="text-xs text-gray-400 mt-1">{emailSubject}</p>
               </div>
               <div className="flex items-center gap-2">

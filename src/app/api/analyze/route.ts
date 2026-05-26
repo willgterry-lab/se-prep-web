@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { anthropic, MODEL } from "@/lib/anthropic"
-import type { ProductContext, MeddpiccScore, MatchedCaseStudy } from "@/types"
+import type { ProductContext, MeddpiccScore, MatchedCaseStudy, SuggestedQuestions } from "@/types"
 
 export const maxDuration = 60
 
@@ -11,6 +11,8 @@ export async function POST(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return new Response("Unauthorized", { status: 401 })
+
+  const scName = (user.user_metadata?.full_name as string | undefined) ?? ""
 
   const { discovery_notes, prospect_name, prospect_company } = await req.json()
 
@@ -46,15 +48,21 @@ export async function POST(req: NextRequest) {
           }),
         ])
 
-        const email = await draftEmail({
-          prospect_name,
-          prospect_company,
-          discovery_notes,
-          product,
-          meddpicc,
-          matched_case_studies: caseStudies,
-        })
+        const [email, questions] = await Promise.all([
+          draftEmail({
+            prospect_name,
+            prospect_company,
+            discovery_notes,
+            product,
+            meddpicc,
+            matched_case_studies: caseStudies,
+            sc_name: scName,
+          }),
+          generateQuestions(discovery_notes, meddpicc, product),
+        ])
         emit({ type: "email", data: email })
+
+        const meddpiccWithQuestions: MeddpiccScore = { ...meddpicc, suggested_questions: questions }
 
         const { data: brief, error } = await supabase
           .from("briefs")
@@ -63,7 +71,7 @@ export async function POST(req: NextRequest) {
             prospect_name,
             prospect_company,
             discovery_notes,
-            meddpicc,
+            meddpicc: meddpiccWithQuestions,
             matched_case_studies: caseStudies,
             follow_up_email: email,
           })
@@ -197,6 +205,7 @@ async function draftEmail({
   product,
   meddpicc,
   matched_case_studies,
+  sc_name,
 }: {
   prospect_name: string
   prospect_company: string
@@ -204,6 +213,7 @@ async function draftEmail({
   product: ProductContext
   meddpicc: MeddpiccScore
   matched_case_studies: MatchedCaseStudy[]
+  sc_name: string
 }): Promise<string> {
   const message = await anthropic.messages.create({
     model: MODEL,
@@ -215,6 +225,7 @@ async function draftEmail({
 
 Situation: The SC has NEVER spoken to the prospect. The AE ran an initial discovery call. The SC has been briefed by the AE and is now emailing the prospect ahead of their first call together to introduce themselves and show they are already across the prospect's situation.
 
+SC name: ${sc_name || "[SC Name]"}
 Product: ${product.company} — ${product.one_line_value}
 Prospect name: ${prospect_name}
 Prospect company: ${prospect_company}
@@ -231,6 +242,7 @@ Rules:
 - Do NOT use any of these phrases or anything similar: "thanks for the time today", "great speaking with you", "following up on our conversation", "as we discussed", "from our call", "taking away from today".
 - Do NOT include any case study references or examples — those are added separately.
 - Close with what the SC intends to cover or demonstrate on the upcoming call.
+- Sign off with the SC's name.
 - Plain, specific, no marketing clichés. Under 200 words.
 - Format: Subject line on first line, blank line, then body.
 - Immediately before the closing sentence, output a line containing only the text: [NEXT_STEPS]`,
@@ -239,6 +251,56 @@ Rules:
   })
 
   return message.content[0].type === "text" ? message.content[0].text : ""
+}
+
+async function generateQuestions(
+  discovery_notes: string,
+  meddpicc: MeddpiccScore,
+  product: ProductContext
+): Promise<SuggestedQuestions> {
+  const gaps = Object.entries(meddpicc)
+    .filter(([key]) => !["overall_score", "summary", "suggested_questions"].includes(key))
+    .map(([key, val]) => {
+      const el = val as { score: number; gap: string }
+      return el.gap ? `${key} (score ${el.score}/3): ${el.gap}` : null
+    })
+    .filter(Boolean)
+    .join("\n")
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant preparing for a first call with a prospect.
+
+Product: ${product.company} — ${product.one_line_value}
+Discovery notes from the AE call:
+${discovery_notes}
+
+MEDDPICC gaps identified:
+${gaps || "None significant"}
+
+Generate 9 questions in three categories. Return ONLY valid JSON:
+{
+  "sc_intro": ["q1", "q2", "q3"],
+  "discovery": ["q1", "q2", "q3"],
+  "technical": ["q1", "q2", "q3"]
+}
+
+sc_intro: 3 questions to open the first SC call — build rapport, confirm understanding of their situation, and set the agenda.
+discovery: 3 questions to go deeper on the MEDDPICC gaps identified above — uncover what the AE didn't get to.
+technical: 3 questions to understand the technical landscape, existing stack, and integration requirements relevant to ${product.company}.
+
+Questions should be specific to this prospect's situation, not generic.`,
+      },
+    ],
+  })
+
+  return parseJson<SuggestedQuestions>(
+    message.content[0].type === "text" ? message.content[0].text : "{}"
+  )
 }
 
 function parseJson<T>(raw: string): T {

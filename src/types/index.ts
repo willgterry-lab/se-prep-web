@@ -28,6 +28,12 @@ export interface ProductContext {
   updated_at: string
 }
 
+export interface SuggestedQuestions {
+  sc_intro: string[]
+  discovery: string[]
+  technical: string[]
+}
+
 export interface MeddpiccScore {
   metrics: { score: number; evidence: string; gap: string }
   economic_buyer: { score: number; evidence: string; gap: string }
@@ -39,6 +45,7 @@ export interface MeddpiccScore {
   competition: { score: number; evidence: string; gap: string }
   overall_score: number
   summary: string
+  suggested_questions?: SuggestedQuestions
 }
 
 export interface MatchedCaseStudy extends CaseStudy {

@@ -8,6 +8,10 @@ export async function GET(request: NextRequest) {
   if (code) {
     const supabase = await createClient()
     await supabase.auth.exchangeCodeForSession(code)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user?.user_metadata?.full_name) {
+      return NextResponse.redirect(`${origin}/profile`)
+    }
   }
 
   return NextResponse.redirect(`${origin}/dashboard`)
