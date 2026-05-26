@@ -229,7 +229,7 @@ Rules:
 - Clear next step as the CTA.
 - Under 200 words.
 - Format: Subject line on first line, blank line, then body.
-- Immediately before the sign-off, output a line containing only the text: [SIGN_OFF]`,
+- Immediately before the next steps / CTA section, output a line containing only the text: [NEXT_STEPS]`,
       },
     ],
   })

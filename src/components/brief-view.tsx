@@ -97,18 +97,18 @@ function buildEmailText(
 
   const oneLiners = selected.filter((cs) => cs.one_liner).map((cs) => cs.one_liner!)
   const caseStudySection = oneLiners.length
-    ? `How we've helped businesses like yours:\n\n${oneLiners.join("\n\n")}`
+    ? `How we've helped businesses like yours:\n\n${oneLiners.map((l) => `• ${l}`).join("\n")}`
     : null
 
-  // Split on [SIGN_OFF] marker so the case study section lands before the sign-off
-  const signoffIndex = body.search(/^[^\S\n]*\[SIGN_OFF\][^\S\n]*$/m)
+  // Split on [NEXT_STEPS] marker so the case study section lands before the CTA
+  const markerIndex = body.search(/^[^\S\n]*\[NEXT_STEPS\][^\S\n]*$/m)
   let assembled: string
-  if (signoffIndex !== -1) {
-    const beforeSignoff = body.slice(0, signoffIndex).trim()
-    const signoff = body.slice(signoffIndex).replace(/^[^\S\n]*\[SIGN_OFF\][^\S\n]*\n?/m, "").trim()
-    const parts = [beforeSignoff]
+  if (markerIndex !== -1) {
+    const beforeNextSteps = body.slice(0, markerIndex).trim()
+    const nextStepsOnward = body.slice(markerIndex).replace(/^[^\S\n]*\[NEXT_STEPS\][^\S\n]*\n?/m, "").trim()
+    const parts = [beforeNextSteps]
     if (caseStudySection) parts.push(caseStudySection)
-    parts.push(signoff)
+    parts.push(nextStepsOnward)
     assembled = parts.join("\n\n")
   } else {
     // Fallback for briefs generated before this change
