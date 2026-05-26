@@ -211,9 +211,9 @@ async function draftEmail({
     messages: [
       {
         role: "user",
-        content: `You are an expert B2B sales writer. Draft an introductory email from a Solutions Consultant (SC) to a prospect, sent before their first call together.
+        content: `You are an expert B2B sales writer. Draft a pre-call introduction email from a Solutions Consultant (SC) to a prospect.
 
-Context: The AE has already had a discovery call with the prospect. The SC is now being brought in to lead the technical evaluation. This email is the SC's first touchpoint with the prospect — it should show the SC has been fully briefed by the AE and understands the situation before they've even spoken.
+Situation: The SC has NEVER spoken to the prospect. The AE ran an initial discovery call. The SC has been briefed by the AE and is now emailing the prospect ahead of their first call together to introduce themselves and show they are already across the prospect's situation.
 
 Product: ${product.company} — ${product.one_line_value}
 Prospect name: ${prospect_name}
@@ -221,18 +221,19 @@ Prospect company: ${prospect_company}
 Deal summary: ${meddpicc.summary}
 Identified pain: ${meddpicc.identify_pain.evidence}
 
-AE discovery notes:
+AE discovery notes (background context only — the SC was not on this call):
 ${discovery_notes}
 
 Rules:
-- The SC introduces themselves and references being brought in by the AE.
-- Demonstrate that the SC has done their homework — reference the prospect's specific situation and pain using their own words from the notes, to show they are already across the detail before the call.
-- Plain, specific, no marketing clichés.
+- Open by introducing the SC by name and role, and reference being brought in by the AE ahead of their upcoming call.
+- Show the SC has done their homework: reference the prospect's specific situation and pain points using their own words, to demonstrate they are already across the detail before they've spoken.
+- Frame the email as preparation for the call, not a summary of one.
+- Do NOT use any of these phrases or anything similar: "thanks for the time today", "great speaking with you", "following up on our conversation", "as we discussed", "from our call", "taking away from today".
 - Do NOT include any case study references or examples — those are added separately.
-- Close with what the SC is planning to focus on in the upcoming call and confirm enthusiasm for it.
-- Under 200 words.
+- Close with what the SC intends to cover or demonstrate on the upcoming call.
+- Plain, specific, no marketing clichés. Under 200 words.
 - Format: Subject line on first line, blank line, then body.
-- Immediately before the closing sentence / CTA, output a line containing only the text: [NEXT_STEPS]`,
+- Immediately before the closing sentence, output a line containing only the text: [NEXT_STEPS]`,
       },
     ],
   })
