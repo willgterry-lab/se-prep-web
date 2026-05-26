@@ -97,7 +97,7 @@ function buildEmailText(
 
   const oneLiners = selected.filter((cs) => cs.one_liner).map((cs) => cs.one_liner!)
   const caseStudySection = oneLiners.length
-    ? `How we've helped businesses like yours:\n\n${oneLiners.map((l) => `• ${l}`).join("\n")}`
+    ? `How we've helped businesses like yours:\n\n${oneLiners.map((l) => `- ${l}`).join("\n")}`
     : null
 
   // Split on [NEXT_STEPS] marker so the case study section lands before the CTA
