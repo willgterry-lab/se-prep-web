@@ -95,17 +95,31 @@ function buildEmailText(
 ): string {
   const body = stripMarkdown(rawEmail.split("\n").slice(2).join("\n").trim())
 
-  const parts: string[] = [body]
-
   const oneLiners = selected.filter((cs) => cs.one_liner).map((cs) => cs.one_liner!)
-  if (oneLiners.length) parts.push(oneLiners.join("\n"))
+  const caseStudySection = oneLiners.length
+    ? `How we've helped businesses like yours:\n\n${oneLiners.join("\n\n")}`
+    : null
 
-  if (selected.length) {
-    const links = selected.map((cs) => `  • ${cs.customer}: ${cs.url}`).join("\n")
-    parts.push(`---\nCase studies referenced:\n${links}`)
+  // Split on [SIGN_OFF] marker so the case study section lands before the sign-off
+  const signoffIndex = body.search(/^[^\S\n]*\[SIGN_OFF\][^\S\n]*$/m)
+  let assembled: string
+  if (signoffIndex !== -1) {
+    const beforeSignoff = body.slice(0, signoffIndex).trim()
+    const signoff = body.slice(signoffIndex).replace(/^[^\S\n]*\[SIGN_OFF\][^\S\n]*\n?/m, "").trim()
+    const parts = [beforeSignoff]
+    if (caseStudySection) parts.push(caseStudySection)
+    parts.push(signoff)
+    assembled = parts.join("\n\n")
+  } else {
+    // Fallback for briefs generated before this change
+    const parts = [body]
+    if (caseStudySection) parts.push(caseStudySection)
+    assembled = parts.join("\n\n")
   }
 
-  return parts.join("\n\n")
+  if (!selected.length) return assembled
+  const links = selected.map((cs) => `  • ${cs.customer}: ${cs.url}`).join("\n")
+  return `${assembled}\n\n---\nCase studies referenced:\n${links}`
 }
 
 function buildMailtoHref(rawEmail: string, selected: MatchedCaseStudy[]): string {

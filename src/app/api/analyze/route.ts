@@ -228,7 +228,8 @@ Rules:
 - Do NOT include any case study references or examples — those are added separately.
 - Clear next step as the CTA.
 - Under 200 words.
-- Format: Subject line on first line, blank line, then body.`,
+- Format: Subject line on first line, blank line, then body.
+- Immediately before the sign-off, output a line containing only the text: [SIGN_OFF]`,
       },
     ],
   })
