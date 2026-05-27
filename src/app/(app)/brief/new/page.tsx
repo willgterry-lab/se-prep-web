@@ -208,6 +208,7 @@ export default function NewBriefPage() {
   })
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [dragging, setDragging] = useState(false)
+  const [generatingTranscript, setGeneratingTranscript] = useState(false)
   const [stream, setStream] = useState<StreamState>({
     phase: "form",
     meddpicc: null,
@@ -225,6 +226,51 @@ export default function NewBriefPage() {
 
   function set(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  // Fire-and-forget: extract prospect name/company from text and populate empty fields
+  async function tryExtractProspect(text: string) {
+    try {
+      const res = await fetch("/api/extract-prospect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setForm((prev) => ({
+        ...prev,
+        prospect_name: prev.prospect_name || data.prospect_name || prev.prospect_name,
+        prospect_company: prev.prospect_company || data.prospect_company || prev.prospect_company,
+      }))
+    } catch {
+      // non-critical — silent failure is fine
+    }
+  }
+
+  async function handleGenerateTranscript() {
+    setGeneratingTranscript(true)
+    try {
+      const res = await fetch("/api/generate-transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prospect_name: form.prospect_name || undefined,
+          prospect_company: form.prospect_company || undefined,
+        }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setForm((prev) => ({
+        prospect_name: prev.prospect_name || data.prospect_name || prev.prospect_name,
+        prospect_company: prev.prospect_company || data.prospect_company || prev.prospect_company,
+        discovery_notes: data.transcript || prev.discovery_notes,
+      }))
+    } catch {
+      // non-critical
+    } finally {
+      setGeneratingTranscript(false)
+    }
   }
 
   async function processFiles(files: File[]) {
@@ -258,6 +304,7 @@ export default function NewBriefPage() {
             setUploadedFiles((prev) =>
               prev.map((f) => (f.id === id ? { ...f, status: "done" } : f))
             )
+            tryExtractProspect(data.text)
           } else {
             setUploadedFiles((prev) =>
               prev.map((f) => (f.id === id ? { ...f, status: "error", error: data.error } : f))
@@ -414,10 +461,34 @@ export default function NewBriefPage() {
           {/* Discovery notes */}
           <Card>
             <CardHeader>
-              <CardTitle>Discovery notes</CardTitle>
-              <CardDescription>
-                Upload files, drag and drop, or paste directly. Multiple files supported — all text is combined.
-              </CardDescription>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle>Discovery notes</CardTitle>
+                  <CardDescription className="mt-1">
+                    Upload files, drag and drop, or paste directly. Multiple files supported — all text is combined.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 mt-0.5"
+                  onClick={handleGenerateTranscript}
+                  disabled={generatingTranscript}
+                >
+                  {generatingTranscript ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      Generating…
+                    </>
+                  ) : (
+                    "Generate example"
+                  )}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Drop zone */}
@@ -463,6 +534,10 @@ export default function NewBriefPage() {
                 placeholder="Or paste notes directly — transcripts, bullet points, anything. The more detail, the better the MEDDPICC score."
                 value={form.discovery_notes}
                 onChange={(e) => setNotes(e.target.value)}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData("text")
+                  if (pasted) tryExtractProspect(pasted)
+                }}
                 rows={10}
                 required
               />
