@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server"
 import { anthropic, MODEL } from "@/lib/anthropic"
 import type { ProductContext } from "@/types"
 
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const {
@@ -54,11 +56,11 @@ PROSPECT_META: {"prospect_name": "First Last", "prospect_company": "Company Name
 
   const message = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 1400,
+    max_tokens: 3500,
     messages: [
       {
         role: "user",
-        content: `Generate a realistic B2B SaaS discovery call transcript between an Account Executive (AE) and a prospect.
+        content: `Generate a realistic B2B SaaS discovery call transcript between an Account Executive (AE) and a prospect. Aim for a 5-minute call — approximately 30–36 exchanges.
 
 Product being sold: ${product.company} — ${product.one_line_value}
 Typical buyers (ICP): ${icpSummary}
@@ -70,13 +72,15 @@ AE: [text]
 PROSPECT: [text]
 
 RULES:
-- 16–20 exchanges total (AE + PROSPECT lines each count as one exchange).
-- The AE should run a structured but conversational discovery. Open with agenda-setting, then probe current state, pain, metrics, decision process, and next steps.
-- The prospect should be engaged but not a pushover — they have real constraints and ask clarifying questions.
-- Surface strong evidence for 4–5 MEDDPICC elements (Metrics, Identify Pain, Champion, Decision Criteria, Competition) with specific numbers or quotes the prospect says out loud.
-- Leave Economic Buyer and Paper Process vague or unmentioned — the AE should try but the prospect deflects or doesn't know.
-- Include at least one competitor name the prospect mentions by name.
-- Include one specific metric the prospect states (e.g. "we're spending about 12 hours a week on this").
+- 30–36 exchanges total (AE + PROSPECT lines each count as one exchange).
+- Structure the call in four natural phases: (1) agenda-setting and rapport (4–5 exchanges), (2) current state and pain discovery (10–12 exchanges), (3) metrics, process, and stakeholders (8–10 exchanges), (4) next steps and wrap-up (4–5 exchanges).
+- The AE should ask open-ended follow-up questions that go deeper, not just move to the next topic.
+- The prospect should be engaged but not a pushover — they have real constraints, ask clarifying questions, and give multi-sentence answers that reveal detail.
+- Surface strong evidence for 5–6 MEDDPICC elements with specific numbers or verbatim quotes the prospect says out loud: Metrics (a concrete number), Identify Pain (a specific problem they describe), Champion (who is driving this internally), Decision Criteria (what they care about in a solution), Competition (a tool they mention by name).
+- Leave Economic Buyer vague — the AE asks but the prospect is unclear or says "that would be my manager."
+- Leave Paper Process unmentioned — the call ends before it comes up.
+- Include at least two specific metrics the prospect states (e.g. "we're spending about 12 hours a week on this", "our data is usually 3–4 days stale by the time it reaches the team").
+- Speaker turns should feel natural: some short, some multi-sentence. Avoid bullet-point style answers from the prospect.
 - Keep the language natural and specific to ${product.company}'s domain. No marketing clichés.
 - Do not add any preamble, headings, or notes outside the PROSPECT_META line (if present) and the transcript lines.`,
       },

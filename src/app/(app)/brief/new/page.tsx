@@ -538,7 +538,7 @@ export default function NewBriefPage() {
                   const pasted = e.clipboardData.getData("text")
                   if (pasted) tryExtractProspect(pasted)
                 }}
-                rows={10}
+                rows={18}
                 required
               />
             </CardContent>
