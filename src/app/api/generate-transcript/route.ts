@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { anthropic, MODEL } from "@/lib/anthropic"
 import type { ProductContext } from "@/types"
@@ -10,10 +10,9 @@ export async function POST(req: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!user) return new Response("Unauthorized", { status: 401 })
 
   const body = await req.json()
-  // prospect_name and prospect_company are optional — if absent, Claude generates fictional ones
   let { prospect_name, prospect_company } = body as {
     prospect_name?: string
     prospect_company?: string
@@ -26,8 +25,8 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (!ctx) {
-    return NextResponse.json(
-      { error: "No product context found. Please complete setup first." },
+    return new Response(
+      JSON.stringify({ type: "error", message: "No product context found. Please complete setup first." }),
       { status: 400 }
     )
   }
@@ -38,15 +37,13 @@ export async function POST(req: NextRequest) {
   const competitorList = product.competitor_mentions?.length
     ? product.competitor_mentions.slice(0, 4).join(", ")
     : "existing tools"
-  const caseStudyHint =
-    product.case_studies?.length
-      ? `The prospect's situation should loosely echo one of these customer outcomes: ${product.case_studies
-          .slice(0, 2)
-          .map((cs) => cs.headline_pain)
-          .join("; ")}.`
-      : ""
+  const caseStudyHint = product.case_studies?.length
+    ? `The prospect's situation should loosely echo one of these customer outcomes: ${product.case_studies
+        .slice(0, 2)
+        .map((cs) => cs.headline_pain)
+        .join("; ")}.`
+    : ""
 
-  // Generate fictional prospect identity if not supplied
   const needsIdentity = !prospect_name || !prospect_company
   const identityInstruction = needsIdentity
     ? `Invent a realistic prospect: a plausible full name and a fictional but believable company name that fits the ICP (${icpSummary}). Use these consistently throughout the transcript. On the very first line, before the transcript, output a JSON line in this exact format and nothing else before the AE line:
@@ -54,13 +51,7 @@ PROSPECT_META: {"prospect_name": "First Last", "prospect_company": "Company Name
 `
     : `Prospect contact: ${prospect_name}, ${prospect_company}\n`
 
-  const message = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 3500,
-    messages: [
-      {
-        role: "user",
-        content: `Generate a realistic B2B SaaS discovery call transcript between an Account Executive (AE) and a prospect. Aim for a 5-minute call — approximately 30–36 exchanges.
+  const prompt = `Generate a realistic B2B SaaS discovery call transcript between an Account Executive (AE) and a prospect. Aim for a 5-minute call — approximately 30–36 exchanges.
 
 Product being sold: ${product.company} — ${product.one_line_value}
 Typical buyers (ICP): ${icpSummary}
@@ -82,28 +73,63 @@ RULES:
 - Include at least two specific metrics the prospect states (e.g. "we're spending about 12 hours a week on this", "our data is usually 3–4 days stale by the time it reaches the team").
 - Speaker turns should feel natural: some short, some multi-sentence. Avoid bullet-point style answers from the prospect.
 - Keep the language natural and specific to ${product.company}'s domain. No marketing clichés.
-- Do not add any preamble, headings, or notes outside the PROSPECT_META line (if present) and the transcript lines.`,
-      },
-    ],
+- Do not add any preamble, headings, or notes outside the PROSPECT_META line (if present) and the transcript lines.`
+
+  const readable = new ReadableStream({
+    async start(controller) {
+      const emit = (event: object) =>
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"))
+
+      try {
+        const stream = anthropic.messages.stream({
+          model: MODEL,
+          max_tokens: 3500,
+          messages: [{ role: "user", content: prompt }],
+        })
+
+        // Buffer until we've resolved the optional PROSPECT_META first line
+        let firstLineBuffer = ""
+        let firstLineProcessed = !needsIdentity
+
+        stream.on("text", (text) => {
+          if (!firstLineProcessed) {
+            firstLineBuffer += text
+            const newlineIdx = firstLineBuffer.indexOf("\n")
+            if (newlineIdx !== -1) {
+              const firstLine = firstLineBuffer.slice(0, newlineIdx)
+              const metaMatch = firstLine.match(/^PROSPECT_META:\s*(\{.+\})$/)
+              if (metaMatch) {
+                try {
+                  const meta = JSON.parse(metaMatch[1])
+                  prospect_name = meta.prospect_name ?? prospect_name
+                  prospect_company = meta.prospect_company ?? prospect_company
+                  emit({ type: "meta", prospect_name: prospect_name ?? null, prospect_company: prospect_company ?? null })
+                } catch {}
+              }
+              const rest = firstLineBuffer.slice(newlineIdx + 1)
+              if (rest) emit({ type: "text", chunk: rest })
+              firstLineProcessed = true
+              firstLineBuffer = ""
+            }
+          } else {
+            emit({ type: "text", chunk: text })
+          }
+        })
+
+        await stream.finalMessage()
+        emit({ type: "done" })
+      } catch (e) {
+        emit({ type: "error", message: e instanceof Error ? e.message : "Generation failed." })
+      } finally {
+        controller.close()
+      }
+    },
   })
 
-  const raw = message.content[0].type === "text" ? message.content[0].text.trim() : ""
-
-  // Parse the optional PROSPECT_META header line
-  let transcript = raw
-  if (needsIdentity) {
-    const metaMatch = raw.match(/^PROSPECT_META:\s*(\{[^\n]+\})\n/)
-    if (metaMatch) {
-      try {
-        const meta = JSON.parse(metaMatch[1])
-        prospect_name = meta.prospect_name ?? prospect_name
-        prospect_company = meta.prospect_company ?? prospect_company
-      } catch {
-        // leave names undefined — client will handle gracefully
-      }
-      transcript = raw.slice(metaMatch[0].length).trim()
-    }
-  }
-
-  return NextResponse.json({ transcript, prospect_name: prospect_name ?? null, prospect_company: prospect_company ?? null })
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "X-Content-Type-Options": "nosniff",
+    },
+  })
 }

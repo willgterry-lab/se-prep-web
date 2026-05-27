@@ -209,6 +209,7 @@ export default function NewBriefPage() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [generatingTranscript, setGeneratingTranscript] = useState(false)
+  const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const [stream, setStream] = useState<StreamState>({
     phase: "form",
     meddpicc: null,
@@ -250,6 +251,9 @@ export default function NewBriefPage() {
 
   async function handleGenerateTranscript() {
     setGeneratingTranscript(true)
+    setTranscriptError(null)
+    let accumulated = ""
+
     try {
       const res = await fetch("/api/generate-transcript", {
         method: "POST",
@@ -259,15 +263,44 @@ export default function NewBriefPage() {
           prospect_company: form.prospect_company || undefined,
         }),
       })
-      if (!res.ok) return
-      const data = await res.json()
-      setForm((prev) => ({
-        prospect_name: prev.prospect_name || data.prospect_name || prev.prospect_name,
-        prospect_company: prev.prospect_company || data.prospect_company || prev.prospect_company,
-        discovery_notes: data.transcript || prev.discovery_notes,
-      }))
-    } catch {
-      // non-critical
+
+      if (!res.ok || !res.body) {
+        const text = await res.text()
+        throw new Error(text || "Request failed")
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let lineBuffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        lineBuffer += decoder.decode(value, { stream: true })
+        const lines = lineBuffer.split("\n")
+        lineBuffer = lines.pop() ?? ""
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          const event = JSON.parse(line)
+
+          if (event.type === "meta") {
+            setForm((prev) => ({
+              ...prev,
+              prospect_name: prev.prospect_name || event.prospect_name || prev.prospect_name,
+              prospect_company: prev.prospect_company || event.prospect_company || prev.prospect_company,
+            }))
+          } else if (event.type === "text") {
+            accumulated += event.chunk
+            setForm((prev) => ({ ...prev, discovery_notes: accumulated }))
+          } else if (event.type === "error") {
+            throw new Error(event.message)
+          }
+        }
+      }
+    } catch (err) {
+      setTranscriptError(err instanceof Error ? err.message : "Something went wrong.")
     } finally {
       setGeneratingTranscript(false)
     }
@@ -468,26 +501,31 @@ export default function NewBriefPage() {
                     Upload files, drag and drop, or paste directly. Multiple files supported — all text is combined.
                   </CardDescription>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 mt-0.5"
-                  onClick={handleGenerateTranscript}
-                  disabled={generatingTranscript}
-                >
-                  {generatingTranscript ? (
-                    <>
-                      <svg className="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                      </svg>
-                      Generating…
-                    </>
-                  ) : (
-                    "Generate example"
+                <div className="flex flex-col items-end gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={handleGenerateTranscript}
+                    disabled={generatingTranscript}
+                  >
+                    {generatingTranscript ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                        </svg>
+                        Generating…
+                      </>
+                    ) : (
+                      "Generate example"
+                    )}
+                  </Button>
+                  {transcriptError && (
+                    <p className="text-xs text-red-500 text-right max-w-48">{transcriptError}</p>
                   )}
-                </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
