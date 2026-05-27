@@ -106,7 +106,7 @@ async function scoreMeddpicc(
 ): Promise<MeddpiccScore> {
   const message = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 2048,
+    max_tokens: 3000,
     messages: [
       {
         role: "user",
@@ -159,7 +159,7 @@ async function matchCaseStudies(
 
   const message = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 1024,
+    max_tokens: 2000,
     messages: [
       {
         role: "user",
@@ -269,7 +269,7 @@ async function generateQuestions(
 
   const message = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 512,
+    max_tokens: 1024,
     messages: [
       {
         role: "user",
