@@ -89,7 +89,7 @@ function MeddpiccPreview({ score }: { score: MeddpiccScore }) {
         <div className="flex items-center justify-between">
           <CardTitle>MEDDPICC</CardTitle>
           <div className="text-2xl font-bold">
-            {score.overall_score}<span className="text-sm font-normal text-gray-400">/24</span>
+            {Math.round((score.overall_score / 24) * 100)}<span className="text-sm font-normal text-gray-400">/100</span>
           </div>
         </div>
         <CardDescription>{score.summary}</CardDescription>

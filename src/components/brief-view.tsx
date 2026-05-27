@@ -29,6 +29,10 @@ const MEDDPICC_LABELS: Record<
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function toDisplayScore(raw: number) {
+  return Math.round((raw / 24) * 100)
+}
+
 function ScorePip({ score }: { score: number }) {
   const colors = ["bg-gray-200", "bg-red-400", "bg-amber-400", "bg-[#1ED760]"]
   return (
@@ -48,7 +52,7 @@ function meddpiccToText(m: MeddpiccScore): string {
     keyof typeof MEDDPICC_LABELS
   >
   const lines = [
-    `MEDDPICC Score: ${m.overall_score}/24`,
+    `MEDDPICC Score: ${toDisplayScore(m.overall_score)}/100`,
     "",
     m.summary,
     "",
@@ -230,8 +234,8 @@ export function BriefView({ brief }: { brief: Brief }) {
           {m && (
             <div className="text-right">
               <div className={`text-3xl font-bold ${m.overall_score >= 16 ? "text-[#1ED760]" : m.overall_score >= 8 ? "text-amber-500" : "text-red-500"}`}>
-                {m.overall_score}
-                <span className="text-lg font-normal text-gray-400">/24</span>
+                {toDisplayScore(m.overall_score)}
+                <span className="text-lg font-normal text-gray-400">/100</span>
               </div>
               <p className="text-xs text-gray-500 mt-0.5">MEDDPICC score</p>
             </div>

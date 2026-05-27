@@ -106,7 +106,7 @@ export default async function DashboardPage() {
                               : "bg-red-100 text-red-600"
                           }`}
                         >
-                          {brief.meddpicc.overall_score}/24
+                          {Math.round((brief.meddpicc.overall_score / 24) * 100)}/100
                         </span>
                       )}
                       <p className="text-xs text-gray-400 mt-1">
