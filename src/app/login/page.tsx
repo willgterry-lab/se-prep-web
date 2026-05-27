@@ -25,10 +25,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">SE Prep</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-[#0A192F]">
+            <span className="text-[#1ED760]">SE</span> Prep
+          </h1>
           <p className="text-gray-500 mt-2">
             Prep for any discovery call in minutes.
           </p>

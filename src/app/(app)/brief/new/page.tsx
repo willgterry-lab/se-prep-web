@@ -36,7 +36,7 @@ function StepRow({ label, status }: { label: string; status: "pending" | "active
     <div className="flex items-center gap-3">
       <span className="w-4 flex justify-center">
         {status === "done" && (
-          <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <svg className="w-4 h-4 text-[#1ED760]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         )}
@@ -71,7 +71,7 @@ const MEDDPICC_LABELS: Record<string, string> = {
 }
 
 function ScorePip({ score }: { score: number }) {
-  const colors = ["bg-gray-200", "bg-red-400", "bg-yellow-400", "bg-green-500"]
+  const colors = ["bg-gray-200", "bg-red-400", "bg-amber-400", "bg-[#1ED760]"]
   return (
     <div className="flex gap-1">
       {[1, 2, 3].map((i) => (
@@ -167,7 +167,7 @@ function FileRow({ file, onRemove }: { file: UploadedFile; onRemove: () => void 
           </svg>
         )}
         {file.status === "done" && (
-          <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <svg className="w-3.5 h-3.5 text-[#1ED760] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         )}

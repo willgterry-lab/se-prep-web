@@ -30,7 +30,7 @@ const MEDDPICC_LABELS: Record<
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function ScorePip({ score }: { score: number }) {
-  const colors = ["bg-gray-200", "bg-red-400", "bg-yellow-400", "bg-green-500"]
+  const colors = ["bg-gray-200", "bg-red-400", "bg-amber-400", "bg-[#1ED760]"]
   return (
     <div className="flex gap-1">
       {[1, 2, 3].map((i) => (
@@ -149,7 +149,7 @@ function SuggestedQuestionsCard({ questions }: { questions: SuggestedQuestions }
             <ul className="space-y-2">
               {questions[key].map((q, i) => (
                 <li key={i} className="flex items-start gap-3">
-                  <span className="text-gray-300 text-sm font-medium mt-0.5 shrink-0">{i + 1}.</span>
+                  <span className="text-[#1ED760] text-sm font-bold mt-0.5 shrink-0">{i + 1}.</span>
                   <p className="text-sm text-gray-700">{q}</p>
                 </li>
               ))}
@@ -229,7 +229,7 @@ export function BriefView({ brief }: { brief: Brief }) {
           <CopyButton text={copyAllText} label="Copy all" />
           {m && (
             <div className="text-right">
-              <div className="text-3xl font-bold">
+              <div className={`text-3xl font-bold ${m.overall_score >= 16 ? "text-[#1ED760]" : m.overall_score >= 8 ? "text-amber-500" : "text-red-500"}`}>
                 {m.overall_score}
                 <span className="text-lg font-normal text-gray-400">/24</span>
               </div>
@@ -322,7 +322,7 @@ export function BriefView({ brief }: { brief: Brief }) {
                     type="checkbox"
                     checked={selectedIndices.has(i)}
                     onChange={() => toggleStudy(i)}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 accent-black cursor-pointer"
+                    className="mt-1 h-4 w-4 rounded border-gray-300 accent-[#1ED760] cursor-pointer"
                   />
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center gap-2">
@@ -338,11 +338,11 @@ export function BriefView({ brief }: { brief: Brief }) {
                       </a>
                     </div>
                     <p className="text-sm text-gray-600">{cs.summary}</p>
-                    <p className="text-xs text-blue-600 italic">
+                    <p className="text-xs text-[#1ED760] italic" style={{ color: "#0e8a42" }}>
                       {cs.relevance_reason}
                     </p>
                     {cs.one_liner && (
-                      <div className="flex items-start justify-between gap-3 rounded-md bg-gray-50 border px-3 py-2 mt-2">
+                      <div className="flex items-start justify-between gap-3 rounded-md bg-[#F4F7F6] border px-3 py-2 mt-2">
                         <p className="text-xs text-gray-700 leading-relaxed">
                           &ldquo;{cs.one_liner}&rdquo;
                         </p>
@@ -387,7 +387,7 @@ export function BriefView({ brief }: { brief: Brief }) {
               {emailText}
             </pre>
             {selectedStudies.length > 0 && (
-              <div className="rounded-md bg-gray-50 border px-4 py-3 space-y-1">
+              <div className="rounded-md bg-[#F4F7F6] border px-4 py-3 space-y-1">
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                   Included case study links
                 </p>

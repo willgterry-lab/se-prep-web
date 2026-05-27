@@ -12,14 +12,19 @@ export default async function LandingPage() {
   if (user) redirect("/dashboard")
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background">
       {/* Nav */}
-      <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 bg-[#0A192F]">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-          <span className="font-semibold text-lg tracking-tight">SE Prep</span>
+          <span className="font-semibold text-lg tracking-tight text-white">
+            <span className="text-[#1ED760]">SE</span> Prep
+          </span>
           <Link
             href="/login"
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "border-white/30 text-white bg-transparent hover:bg-white/10 hover:text-white"
+            )}
           >
             Sign in
           </Link>
@@ -28,7 +33,7 @@ export default async function LandingPage() {
 
       {/* Hero */}
       <section className="max-w-3xl mx-auto px-4 pt-24 pb-20 text-center">
-        <h1 className="text-5xl font-bold tracking-tight leading-tight">
+        <h1 className="text-5xl font-bold tracking-tight leading-tight text-[#0A192F]">
           Prep for any discovery call.
           <br />
           In minutes.
@@ -46,16 +51,16 @@ export default async function LandingPage() {
       </section>
 
       {/* How it works */}
-      <section className="bg-gray-50 py-20">
+      <section className="bg-[#F4F7F6] py-20">
         <div className="max-w-5xl mx-auto px-4">
-          <h2 className="text-2xl font-bold text-center mb-12">How it works</h2>
+          <h2 className="text-2xl font-bold text-center mb-12 text-[#0A192F]">How it works</h2>
           <div className="grid md:grid-cols-3 gap-10">
             {STEPS.map((step, i) => (
               <div key={i} className="space-y-3">
-                <div className="w-8 h-8 rounded-full bg-black text-white text-sm font-bold flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-full bg-[#1ED760] text-[#0A192F] text-sm font-bold flex items-center justify-center shrink-0">
                   {i + 1}
                 </div>
-                <h3 className="font-semibold">{step.title}</h3>
+                <h3 className="font-semibold text-[#0A192F]">{step.title}</h3>
                 <p className="text-sm text-gray-500 leading-relaxed">
                   {step.body}
                 </p>
@@ -66,18 +71,18 @@ export default async function LandingPage() {
       </section>
 
       {/* What you get */}
-      <section className="py-20">
+      <section className="py-20 bg-background">
         <div className="max-w-5xl mx-auto px-4">
-          <h2 className="text-2xl font-bold text-center mb-12">
+          <h2 className="text-2xl font-bold text-center mb-12 text-[#0A192F]">
             What you get
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
             {OUTPUTS.map((output, i) => (
               <div
                 key={i}
-                className="rounded-xl border bg-white p-6 space-y-2 shadow-sm"
+                className="rounded-xl border-l-4 border-l-[#1ED760] border border-border bg-card p-6 space-y-2 shadow-sm"
               >
-                <p className="font-semibold">{output.title}</p>
+                <p className="font-semibold text-[#0A192F]">{output.title}</p>
                 <p className="text-sm text-gray-500 leading-relaxed">
                   {output.body}
                 </p>
@@ -88,12 +93,12 @@ export default async function LandingPage() {
       </section>
 
       {/* Bottom CTA */}
-      <section className="bg-gray-50 py-20 text-center">
+      <section className="bg-[#0A192F] py-20 text-center">
         <div className="max-w-xl mx-auto px-4">
-          <h2 className="text-2xl font-bold">
+          <h2 className="text-2xl font-bold text-white">
             Stop winging your discovery calls.
           </h2>
-          <p className="mt-3 text-gray-500">
+          <p className="mt-3 text-white/60">
             Set up in under a minute. Free to use.
           </p>
           <div className="mt-8">
@@ -105,7 +110,7 @@ export default async function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-6 text-center">
+      <footer className="border-t border-border py-6 text-center bg-background">
         <p className="text-xs text-gray-400">
           SE Prep · Built for Solutions Engineers ·{" "}
           <Link href="/privacy" className="underline hover:text-gray-600">

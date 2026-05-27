@@ -89,7 +89,7 @@ export default async function DashboardPage() {
           <div className="grid gap-3">
             {briefList.map((brief) => (
               <Link key={brief.id} href={`/brief/${brief.id}`}>
-                <Card className="hover:border-gray-400 transition-colors cursor-pointer">
+                <Card className="hover:border-[#1ED760] transition-colors cursor-pointer">
                   <CardContent className="py-4 flex items-center justify-between">
                     <div>
                       <p className="font-medium">{brief.prospect_name}</p>
@@ -97,11 +97,17 @@ export default async function DashboardPage() {
                     </div>
                     <div className="text-right">
                       {brief.meddpicc && (
-                        <Badge
-                          variant={brief.meddpicc.overall_score >= 16 ? "default" : brief.meddpicc.overall_score >= 8 ? "secondary" : "outline"}
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            brief.meddpicc.overall_score >= 16
+                              ? "bg-[#1ED760]/15 text-[#0A6630]"
+                              : brief.meddpicc.overall_score >= 8
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-red-100 text-red-600"
+                          }`}
                         >
                           {brief.meddpicc.overall_score}/24
-                        </Badge>
+                        </span>
                       )}
                       <p className="text-xs text-gray-400 mt-1">
                         {new Date(brief.created_at).toLocaleDateString()}

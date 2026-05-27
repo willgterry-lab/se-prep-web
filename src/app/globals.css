@@ -49,38 +49,39 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Brand tokens: #1ED760 green · #0A192F navy · #F4F7F6 mint-white */
+  --background: #F4F7F6;
+  --foreground: #0A192F;
+  --card: #ffffff;
+  --card-foreground: #0A192F;
+  --popover: #ffffff;
+  --popover-foreground: #0A192F;
+  --primary: #1ED760;
+  --primary-foreground: #0A192F;
+  --secondary: oklch(0.95 0.004 157);
+  --secondary-foreground: #0A192F;
+  --muted: oklch(0.95 0.004 157);
+  --muted-foreground: oklch(0.48 0.02 252);
+  --accent: oklch(0.95 0.004 157);
+  --accent-foreground: #0A192F;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
+  --border: oklch(0.9 0.005 157);
+  --input: oklch(0.9 0.005 157);
+  --ring: #1ED760;
+  --chart-1: #1ED760;
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --chart-5: #0A192F;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #F4F7F6;
+  --sidebar-foreground: #0A192F;
+  --sidebar-primary: #1ED760;
+  --sidebar-primary-foreground: #0A192F;
+  --sidebar-accent: oklch(0.95 0.004 157);
+  --sidebar-accent-foreground: #0A192F;
+  --sidebar-border: oklch(0.9 0.005 157);
+  --sidebar-ring: #1ED760;
 }
 
 .dark {
