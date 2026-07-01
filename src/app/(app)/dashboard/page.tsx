@@ -71,7 +71,7 @@ export default async function DashboardPage() {
                 <p className="text-sm text-gray-600">{product.case_studies.length} loaded</p>
               </div>
               <p className="text-xs text-gray-400">
-                Last crawled {new Date(product.crawled_at).toLocaleDateString()}
+                Last crawled {new Date(product.crawled_at).toLocaleDateString("en-GB")}
               </p>
             </CardContent>
           </Card>
@@ -138,7 +138,7 @@ export default async function DashboardPage() {
                           </span>
                         )}
                         <p className="text-xs text-gray-400 mt-1">
-                          {new Date(deal.updated_at).toLocaleDateString()}
+                          {new Date(deal.updated_at).toLocaleDateString("en-GB")}
                         </p>
                       </div>
                     </CardContent>

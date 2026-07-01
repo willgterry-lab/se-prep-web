@@ -272,7 +272,7 @@ function TaskRow({
           )}
           {task.reminder_at && !overdue && task.status === "open" && (
             <span className="text-[10px] text-gray-400">
-              Due {new Date(task.reminder_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+              Due {new Date(task.reminder_at).toLocaleDateString("en-GB")}
             </span>
           )}
         </div>
@@ -312,11 +312,7 @@ export function DealView({
           </div>
           <p className="text-gray-500">{deal.prospect_company}</p>
           <p className="text-xs text-gray-400 mt-1">
-            Started {new Date(deal.created_at).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
+            Started {new Date(deal.created_at).toLocaleDateString("en-GB")}
           </p>
         </div>
         {displayScore !== null && m && (
@@ -373,11 +369,7 @@ export function DealView({
                       {brief.stage.replace("_", " ")}
                     </Badge>
                     <p className="text-sm text-gray-700">
-                      {new Date(brief.created_at).toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {new Date(brief.created_at).toLocaleDateString("en-GB")}
                     </p>
                   </div>
                   {brief.meddpicc && (
