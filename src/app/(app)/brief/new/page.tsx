@@ -432,7 +432,7 @@ export default function NewBriefPage() {
             setStream((s) => ({ ...s, email: event.data }))
           } else if (event.type === "done") {
             setStream((s) => ({ ...s, phase: "done" }))
-            router.push(`/brief/${event.data.brief_id}`)
+            router.push(`/deal/${event.data.deal_id}`)
           } else if (event.type === "error") {
             throw new Error(event.message)
           }

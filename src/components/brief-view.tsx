@@ -9,12 +9,12 @@ import { Separator } from "@/components/ui/separator"
 import { CopyButton } from "@/components/copy-button"
 import { DeleteBriefButton } from "@/components/delete-brief-button"
 import { cn } from "@/lib/utils"
-import type { Brief, MeddpiccScore, MatchedCaseStudy, SuggestedQuestions } from "@/types"
+import type { Brief, MeddpiccScore, MeddpiccDelta, RiskItem, MatchedCaseStudy, SuggestedQuestions } from "@/types"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MEDDPICC_LABELS: Record<
-  keyof Omit<MeddpiccScore, "overall_score" | "summary" | "suggested_questions">,
+  keyof Omit<MeddpiccScore, "overall_score" | "summary" | "suggested_questions" | "answered_questions">,
   string
 > = {
   metrics: "Metrics",
@@ -132,6 +132,99 @@ function buildMailtoHref(rawEmail: string, selected: MatchedCaseStudy[]): string
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
+// ─── Delta card ───────────────────────────────────────────────────────────────
+
+const MEDDPICC_ELEMENTS = Object.keys(MEDDPICC_LABELS) as Array<keyof typeof MEDDPICC_LABELS>
+
+function ChangeChip({ change }: { change: number }) {
+  if (change === 0) return <span className="text-xs text-gray-400">no change</span>
+  const positive = change > 0
+  return (
+    <span className={`text-xs font-semibold ${positive ? "text-[#1ED760]" : "text-red-500"}`}>
+      {positive ? "+" : ""}{change}
+    </span>
+  )
+}
+
+function DeltaCard({ delta }: { delta: MeddpiccDelta }) {
+  const prevDisplay = Math.round((delta.overall_prev / 24) * 100)
+  const currDisplay = Math.round((delta.overall_curr / 24) * 100)
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Score movement</CardTitle>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500">{prevDisplay}/100</span>
+            <span className="text-gray-400">to</span>
+            <span className={`font-bold ${delta.overall_curr >= 16 ? "text-[#1ED760]" : delta.overall_curr >= 8 ? "text-amber-500" : "text-red-500"}`}>
+              {currDisplay}/100
+            </span>
+            <ChangeChip change={currDisplay - prevDisplay} />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="divide-y">
+        {MEDDPICC_ELEMENTS.map((key) => {
+          const el = delta[key as keyof MeddpiccDelta] as { prev: number; curr: number; change: number } | undefined
+          if (!el || typeof el !== "object" || !("prev" in el)) return null
+          return (
+            <div key={key} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between">
+              <span className="text-sm text-gray-700 w-36 shrink-0">{MEDDPICC_LABELS[key]}</span>
+              <div className="flex items-center gap-3">
+                <ScorePip score={el.prev} />
+                <span className="text-gray-300 text-xs">to</span>
+                <ScorePip score={el.curr} />
+                <ChangeChip change={el.change} />
+              </div>
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Risk card ────────────────────────────────────────────────────────────────
+
+function SeverityBadge({ severity }: { severity: RiskItem["severity"] }) {
+  const classes = {
+    high: "bg-red-100 text-red-700 border-red-200",
+    medium: "bg-amber-100 text-amber-700 border-amber-200",
+    low: "bg-gray-100 text-gray-600 border-gray-200",
+  }
+  return (
+    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${classes[severity]}`}>
+      {severity}
+    </span>
+  )
+}
+
+function RiskCard({ risks }: { risks: RiskItem[] }) {
+  const sorted = [...risks].sort((a, b) => {
+    const order = { high: 0, medium: 1, low: 2 }
+    return order[a.severity] - order[b.severity]
+  })
+  return (
+    <Card>
+      <CardHeader><CardTitle>Risk areas</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        {sorted.map((risk, i) => (
+          <div key={i} className="space-y-1">
+            <div className="flex items-start gap-2">
+              <SeverityBadge severity={risk.severity} />
+              <p className="text-sm font-medium text-gray-800 leading-snug">{risk.risk}</p>
+            </div>
+            {risk.evidence && risk.evidence !== "none" && (
+              <p className="text-xs text-gray-500 pl-1">&ldquo;{risk.evidence}&rdquo;</p>
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Suggested questions card ─────────────────────────────────────────────────
 
 const QUESTION_SECTIONS: { key: keyof SuggestedQuestions; label: string }[] = [
@@ -243,6 +336,12 @@ export function BriefView({ brief }: { brief: Brief }) {
         </div>
       </div>
 
+      {/* Score delta (post-call briefs only) */}
+      {brief.delta && <DeltaCard delta={brief.delta} />}
+
+      {/* Risk areas (post-call briefs only) */}
+      {brief.risks && brief.risks.length > 0 && <RiskCard risks={brief.risks} />}
+
       {m && (
         <>
           {/* Deal summary */}
@@ -300,6 +399,40 @@ export function BriefView({ brief }: { brief: Brief }) {
           {/* Suggested questions */}
           {m.suggested_questions && (
             <SuggestedQuestionsCard questions={m.suggested_questions} />
+          )}
+
+          {/* Questions answered on this call (post-call briefs only) */}
+          {m.answered_questions && (
+            m.answered_questions.sc_intro.length > 0 ||
+            m.answered_questions.discovery.length > 0 ||
+            m.answered_questions.technical.length > 0
+          ) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Covered on this call</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {QUESTION_SECTIONS.map(({ key, label }) => {
+                  const qs = m.answered_questions![key]
+                  if (!qs?.length) return null
+                  return (
+                    <div key={key}>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{label}</p>
+                      <ul className="space-y-2">
+                        {qs.map((q, i) => (
+                          <li key={i} className="flex items-start gap-3">
+                            <svg className="w-4 h-4 text-[#1ED760] mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <p className="text-sm text-gray-400 line-through">{q}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
           )}
         </>
       )}
@@ -370,7 +503,7 @@ export function BriefView({ brief }: { brief: Brief }) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Intro email</CardTitle>
+                <CardTitle>{brief.stage === "post_call" ? "Follow-up email" : "Intro email"}</CardTitle>
                 <p className="text-xs text-gray-400 mt-1">{emailSubject}</p>
               </div>
               <div className="flex items-center gap-2">

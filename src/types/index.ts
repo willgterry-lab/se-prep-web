@@ -46,6 +46,39 @@ export interface MeddpiccScore {
   overall_score: number
   summary: string
   suggested_questions?: SuggestedQuestions
+  answered_questions?: SuggestedQuestions
+}
+
+export interface MeddpiccElementDelta {
+  prev: number
+  curr: number
+  change: number
+}
+
+export interface MeddpiccDelta {
+  metrics: MeddpiccElementDelta
+  economic_buyer: MeddpiccElementDelta
+  decision_criteria: MeddpiccElementDelta
+  decision_process: MeddpiccElementDelta
+  paper_process: MeddpiccElementDelta
+  identify_pain: MeddpiccElementDelta
+  champion: MeddpiccElementDelta
+  competition: MeddpiccElementDelta
+  overall_prev: number
+  overall_curr: number
+  overall_change: number
+}
+
+export interface RiskItem {
+  risk: string
+  evidence: string
+  severity: "low" | "medium" | "high"
+}
+
+export interface NextAction {
+  action: string
+  owner: string | null
+  suggested_reminder_date: string | null
 }
 
 export interface MatchedCaseStudy extends CaseStudy {
@@ -54,15 +87,50 @@ export interface MatchedCaseStudy extends CaseStudy {
   one_liner?: string
 }
 
+export type BriefStage = "prep" | "post_call"
+export type DealStage = "prep" | "post_call" | "pov" | "value_engineering"
+
 export interface Brief {
   id: string
   user_id: string
+  deal_id: string | null
+  stage: BriefStage
   prospect_name: string
   prospect_company: string
   discovery_notes: string
   meddpicc: MeddpiccScore
   matched_case_studies: MatchedCaseStudy[]
   follow_up_email: string
+  delta: MeddpiccDelta | null
+  risks: RiskItem[]
   created_at: string
   updated_at: string
+}
+
+export interface Deal {
+  id: string
+  user_id: string
+  prospect_name: string
+  prospect_company: string
+  stage: DealStage
+  created_at: string
+  updated_at: string
+}
+
+export type TaskStatus = "open" | "done"
+
+export interface DealTask {
+  id: string
+  deal_id: string
+  description: string
+  status: TaskStatus
+  source: string
+  owner: string | null
+  reminder_at: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+export interface DealWithBriefs extends Deal {
+  briefs: Brief[]
 }

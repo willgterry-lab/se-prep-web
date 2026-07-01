@@ -59,3 +59,88 @@ create trigger set_updated_at_product_contexts
 create trigger set_updated_at_briefs
   before update on public.briefs
   for each row execute function public.set_updated_at();
+
+
+-- ─── Migration v2: deals and deal_tasks ───────────────────────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+-- Safe to run on a fresh install immediately after the schema above.
+
+-- One deal per prospect/opportunity. Every brief, POV, and VE stage belongs to a deal.
+create table public.deals (
+  id               uuid        primary key default gen_random_uuid(),
+  user_id          uuid        references auth.users(id) on delete cascade not null,
+  prospect_name    text        not null,
+  prospect_company text        not null,
+  stage            text        not null default 'prep',
+  -- stage values: 'prep' | 'post_call' | 'pov' | 'value_engineering'
+  created_at       timestamptz default now(),
+  updated_at       timestamptz default now()
+);
+
+-- Structured task list generated from each analysis run, attached to a deal.
+create table public.deal_tasks (
+  id           uuid        primary key default gen_random_uuid(),
+  deal_id      uuid        references public.deals(id) on delete cascade not null,
+  description  text        not null,
+  status       text        not null default 'open',  -- 'open' | 'done'
+  source       text        not null,                 -- e.g. 'post_call_2026-07-01'
+  owner        text,                                 -- 'SC', 'Prospect', or null
+  reminder_at  timestamptz,                          -- null if no reminder set
+  created_at   timestamptz default now(),
+  completed_at timestamptz
+);
+
+-- Extend briefs with deal linkage and stage.
+alter table public.briefs
+  add column if not exists deal_id uuid references public.deals(id) on delete cascade,
+  add column if not exists stage   text not null default 'prep',
+  add column if not exists delta   jsonb,
+  add column if not exists risks   jsonb default '[]';
+
+-- RLS for deals and deal_tasks.
+alter table public.deals enable row level security;
+alter table public.deal_tasks enable row level security;
+
+create policy "Users manage own deals"
+  on public.deals for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "Users manage own deal tasks"
+  on public.deal_tasks for all
+  using (
+    exists (
+      select 1 from public.deals
+      where deals.id = deal_tasks.deal_id
+        and deals.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.deals
+      where deals.id = deal_tasks.deal_id
+        and deals.user_id = auth.uid()
+    )
+  );
+
+-- updated_at triggers for new tables.
+create trigger set_updated_at_deals
+  before update on public.deals
+  for each row execute function public.set_updated_at();
+
+-- Backfill: create one deal per unique (user_id, prospect_company) from existing briefs,
+-- then link each brief to its deal.
+-- Uses DISTINCT ON to pick the earliest brief's prospect_name for the deal name.
+insert into public.deals (user_id, prospect_name, prospect_company, stage)
+select distinct on (user_id, lower(prospect_company))
+  user_id, prospect_name, prospect_company, 'prep'
+from public.briefs
+where deal_id is null
+order by user_id, lower(prospect_company), created_at asc;
+
+update public.briefs b
+set deal_id = d.id
+from public.deals d
+where d.user_id = b.user_id
+  and lower(d.prospect_company) = lower(b.prospect_company)
+  and b.deal_id is null;
