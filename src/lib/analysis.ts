@@ -7,6 +7,9 @@ import type {
   SuggestedQuestions,
   RiskItem,
   NextAction,
+  SuccessCriterion,
+  PovAssessment,
+  PovCallType,
 } from "@/types"
 
 const MEDDPICC_ELEMENTS = [
@@ -413,6 +416,139 @@ Rules:
   return parseJson<NextAction[]>(
     message.content[0].type === "text" ? message.content[0].text : "[]"
   )
+}
+
+export async function assessPovCriteria(
+  transcript: string,
+  success_criteria: SuccessCriterion[],
+  product: ProductContext,
+  prospect_company: string
+): Promise<PovAssessment[]> {
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1500,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant reviewing a POV (Proof of Value) call.
+
+Product: ${product.company} -- ${product.one_line_value}
+Prospect company: ${prospect_company}
+
+Success criteria agreed for this POV:
+${success_criteria.map((c) => `${c.id}. ${c.description}`).join("\n")}
+
+Call transcript:
+${transcript}
+
+For each success criterion, assess whether this call provided evidence of it being met, in progress, or not yet addressed.
+
+Return ONLY valid JSON array with no code fences or preamble:
+[
+  {
+    "criterion_id": 1,
+    "status": "met",
+    "evidence": "verbatim quote from the transcript, or 'Not evidenced on this call'",
+    "notes": null
+  }
+]
+
+Status values: "met" | "in_progress" | "not_met"
+
+Rules:
+- Evidence must be a verbatim quote from the transcript where possible.
+- "met": clear evidence in this transcript that the criterion was demonstrated or achieved.
+- "in_progress": partial evidence -- some progress but not fully demonstrated yet.
+- "not_met": no evidence this criterion was addressed on this call.
+- Return exactly one object per criterion, in the same order as the criteria list.
+- Never fabricate evidence.`,
+      },
+    ],
+  })
+
+  return parseJson<PovAssessment[]>(
+    message.content[0].type === "text" ? message.content[0].text : "[]"
+  )
+}
+
+export async function draftPovCallEmail({
+  prospect_name,
+  prospect_company,
+  transcript,
+  product,
+  success_criteria,
+  pov_assessment,
+  call_type,
+  sc_name,
+}: {
+  prospect_name: string
+  prospect_company: string
+  transcript: string
+  product: ProductContext
+  success_criteria: SuccessCriterion[]
+  pov_assessment: PovAssessment[]
+  call_type: PovCallType
+  sc_name: string
+}): Promise<string> {
+  const callTypeLabel =
+    call_type === "setup"
+      ? "POV setup / kickoff call"
+      : call_type === "checkin"
+      ? "POV check-in call"
+      : "POV final review call"
+
+  const criteriaProgress = pov_assessment
+    .map((a) => {
+      const c = success_criteria.find((sc) => sc.id === a.criterion_id)
+      const statusLabel =
+        a.status === "met" ? "MET" : a.status === "in_progress" ? "IN PROGRESS" : "NOT YET EVIDENCED"
+      return `- ${c?.description ?? `Criterion ${a.criterion_id}`}: ${statusLabel} -- ${a.evidence}`
+    })
+    .join("\n")
+
+  const callTypeInstructions =
+    call_type === "setup"
+      ? "- Confirm the success criteria agreed and what the trial will demonstrate.\n- Confirm what each party needs to do to get the POV underway."
+      : call_type === "checkin"
+      ? "- Highlight which criteria are showing clear progress.\n- Flag any criteria that need attention before the review.\n- Confirm what is needed from each side before the final review."
+      : "- Summarise the outcome against each success criterion clearly.\n- Be direct about what the evidence shows.\n- Close with a clear recommended next step."
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert B2B sales writer. Draft a follow-up email from a Solutions Consultant (SC) to a prospect after a ${callTypeLabel}.
+
+SC name: ${sc_name || "[SC Name]"}
+Product: ${product.company} -- ${product.one_line_value}
+Prospect name: ${prospect_name}
+Prospect company: ${prospect_company}
+
+Success criteria for this POV:
+${success_criteria.map((c) => `${c.id}. ${c.description}`).join("\n")}
+
+Progress against each criterion on this call:
+${criteriaProgress}
+
+Call transcript:
+${transcript}
+
+Rules:
+- Open directly on substance. Do NOT use: "thanks for the time", "great speaking", "as discussed", "following up on our call".
+- Reference specific things from the call using the prospect's own words.
+${callTypeInstructions}
+- Keep to 3 short paragraphs.
+- Sign off with the SC's name.
+- Plain, specific, no marketing clichés. Under 200 words.
+- UK English. No em-dashes.
+- Format: Subject line on first line, blank line, then body.`,
+      },
+    ],
+  })
+
+  return message.content[0].type === "text" ? message.content[0].text : ""
 }
 
 export async function draftPrepEmail({

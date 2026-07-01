@@ -144,3 +144,15 @@ from public.deals d
 where d.user_id = b.user_id
   and lower(d.prospect_company) = lower(b.prospect_company)
   and b.deal_id is null;
+
+
+-- ─── Migration v3: POV stage ──────────────────────────────────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+
+alter table public.deals
+  add column if not exists success_criteria jsonb default '[]',
+  add column if not exists share_token      text unique;
+
+alter table public.briefs
+  add column if not exists pov_assessment jsonb default '[]',
+  add column if not exists recording_url  text;

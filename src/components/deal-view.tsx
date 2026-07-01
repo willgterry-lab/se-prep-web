@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import Link from "next/link"
-import { buttonVariants } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import type { Deal, Brief, DealTask, MeddpiccDelta, RiskItem, TaskStatus } from "@/types"
+import type { Deal, Brief, DealTask, MeddpiccDelta, RiskItem, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus } from "@/types"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -58,6 +58,22 @@ function ChangeChip({ change }: { change: number }) {
       className={`text-xs font-semibold ${positive ? "text-[#1ED760]" : "text-red-500"}`}
     >
       {positive ? "+" : ""}{change}
+    </span>
+  )
+}
+
+function PovStatusBadge({ status }: { status: PovCriterionStatus }) {
+  const classes = {
+    met: "bg-[#1ED760]/15 text-[#0A6630] border-[#1ED760]/30",
+    in_progress: "bg-amber-100 text-amber-700 border-amber-200",
+    not_met: "bg-gray-100 text-gray-500 border-gray-200",
+  }
+  const labels = { met: "Met", in_progress: "In progress", not_met: "Not yet" }
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0 ${classes[status]}`}
+    >
+      {labels[status]}
     </span>
   )
 }
@@ -281,6 +297,141 @@ function TaskRow({
   )
 }
 
+// ─── POV progress card ────────────────────────────────────────────────────────
+
+function PovProgressCard({
+  criteria,
+  assessment,
+}: {
+  criteria: SuccessCriterion[]
+  assessment: PovAssessment[]
+}) {
+  const assessmentMap = new Map(assessment.map((a) => [a.criterion_id, a]))
+  const metCount = assessment.filter((a) => a.status === "met").length
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>POV progress</CardTitle>
+          <span className="text-sm text-gray-500">
+            {metCount} of {criteria.length} met
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="divide-y">
+        {criteria.map((c) => {
+          const a = assessmentMap.get(c.id)
+          const status: PovCriterionStatus = a?.status ?? "not_met"
+          return (
+            <div key={c.id} className="py-3 first:pt-0 last:pb-0 space-y-1">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-gray-800 leading-snug">{c.description}</p>
+                <PovStatusBadge status={status} />
+              </div>
+              {a?.evidence && a.evidence !== "Not evidenced on this call" && (
+                <p className="text-xs text-gray-500 italic">
+                  &ldquo;{a.evidence}&rdquo;
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Share section ────────────────────────────────────────────────────────────
+
+function ShareSection({ dealId, initialToken }: { dealId: string; initialToken: string | null }) {
+  const [token, setToken] = useState<string | null>(initialToken)
+  const [shareUrl, setShareUrl] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (token) setShareUrl(`${window.location.origin}/s/${token}`)
+    else setShareUrl("")
+  }, [token])
+
+  async function generate() {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/share`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate" }),
+      })
+      const data = await res.json()
+      if (res.ok) setToken(data.share_token)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function revoke() {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/share`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "revoke" }),
+      })
+      if (res.ok) setToken(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {}
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Prospect salesroom</CardTitle>
+        <CardDescription className="mt-1">
+          Share a live POV progress page with your prospect.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {token ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={shareUrl}
+                className="flex-1 text-sm bg-gray-50 border rounded-md px-3 py-2 text-gray-700 font-mono truncate"
+              />
+              <Button variant="outline" size="sm" onClick={copy} disabled={!shareUrl}>
+                {copied ? "Copied!" : "Copy"}
+              </Button>
+            </div>
+            <button
+              type="button"
+              onClick={revoke}
+              disabled={loading}
+              className="text-xs text-red-500 hover:text-red-700 underline underline-offset-2 disabled:opacity-50"
+            >
+              Revoke link
+            </button>
+          </div>
+        ) : (
+          <Button onClick={generate} disabled={loading}>
+            {loading ? "Generating..." : "Generate salesroom link"}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function DealView({
@@ -294,7 +445,9 @@ export function DealView({
 }) {
   const latestBrief = briefs.length ? briefs[briefs.length - 1] : null
   const postCallBrief = briefs.find((b) => b.stage === "post_call") ?? null
+  const latestPovBrief = [...briefs].reverse().find((b) => b.stage === "pov") ?? null
   const hasPostCall = !!postCallBrief
+  const hasPov = !!latestPovBrief
 
   const m = latestBrief?.meddpicc ?? null
   const displayScore = m ? toDisplayScore(m.overall_score) : null
@@ -336,6 +489,19 @@ export function DealView({
         <RiskCard risks={postCallBrief.risks} />
       )}
 
+      {/* POV progress */}
+      {hasPov && latestPovBrief && deal.success_criteria?.length > 0 && (
+        <PovProgressCard
+          criteria={deal.success_criteria}
+          assessment={latestPovBrief.pov_assessment ?? []}
+        />
+      )}
+
+      {/* Salesroom share */}
+      {hasPov && (
+        <ShareSection dealId={deal.id} initialToken={deal.share_token} />
+      )}
+
       {/* Task list */}
       {tasks.length > 0 && <TaskList dealId={deal.id} initialTasks={tasks} />}
 
@@ -349,6 +515,21 @@ export function DealView({
               className={cn(buttonVariants())}
             >
               Run post-call analysis
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* POV CTA */}
+      {hasPostCall && !hasPov && (
+        <Card className="border-dashed">
+          <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
+            <p className="text-sm text-gray-600">Ready to start your Proof of Value?</p>
+            <Link
+              href={`/deal/${deal.id}/pov/new`}
+              className={cn(buttonVariants())}
+            >
+              Start POV
             </Link>
           </CardContent>
         </Card>

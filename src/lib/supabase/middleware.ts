@@ -33,7 +33,9 @@ export async function updateSession(request: NextRequest) {
   const isApiRoute = request.nextUrl.pathname.startsWith("/api")
   const isAuthCallback = request.nextUrl.pathname.startsWith("/auth")
   const isPublicPage =
-    request.nextUrl.pathname === "/" || request.nextUrl.pathname === "/privacy"
+    request.nextUrl.pathname === "/" ||
+    request.nextUrl.pathname === "/privacy" ||
+    request.nextUrl.pathname.startsWith("/s/")
 
   if (!user && !isAuthRoute && !isApiRoute && !isAuthCallback && !isPublicPage) {
     const url = request.nextUrl.clone()

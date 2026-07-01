@@ -81,13 +81,29 @@ export interface NextAction {
   suggested_reminder_date: string | null
 }
 
+export type PovCallType = "setup" | "checkin" | "review"
+
+export interface SuccessCriterion {
+  id: number
+  description: string
+}
+
+export type PovCriterionStatus = "met" | "in_progress" | "not_met"
+
+export interface PovAssessment {
+  criterion_id: number
+  status: PovCriterionStatus
+  evidence: string
+  notes?: string | null
+}
+
 export interface MatchedCaseStudy extends CaseStudy {
   relevance_reason: string
   relevance_score: number
   one_liner?: string
 }
 
-export type BriefStage = "prep" | "post_call"
+export type BriefStage = "prep" | "post_call" | "pov"
 export type DealStage = "prep" | "post_call" | "pov" | "value_engineering"
 
 export interface Brief {
@@ -103,6 +119,8 @@ export interface Brief {
   follow_up_email: string
   delta: MeddpiccDelta | null
   risks: RiskItem[]
+  pov_assessment: PovAssessment[]
+  recording_url: string | null
   created_at: string
   updated_at: string
 }
@@ -113,6 +131,8 @@ export interface Deal {
   prospect_name: string
   prospect_company: string
   stage: DealStage
+  success_criteria: SuccessCriterion[]
+  share_token: string | null
   created_at: string
   updated_at: string
 }

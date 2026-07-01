@@ -19,9 +19,15 @@ This version has breaking changes -- APIs, conventions, and file structure may a
 
 ## Concept glossary
 
-**Brief** -- a single AI analysis run against a set of input text (discovery notes or call transcript). A brief belongs to a deal. Two types: `prep` (pre-first-call) and `post_call` (after the SC's first real call).
+**Brief** -- a single AI analysis run against a set of input text (discovery notes or call transcript). A brief belongs to a deal. Three types: `prep` (pre-first-call), `post_call` (after the SC's first real call), `pov` (each POV call: setup, check-in, or review).
 
-**Deal** -- the persistent, top-level entity representing one sales opportunity with one prospect company. Multiple briefs, tasks, and (later) POV and VE outputs attach to a deal. A deal advances through stages: `prep` -> `post_call` -> `pov` -> `value_engineering`.
+**Deal** -- the persistent, top-level entity representing one sales opportunity with one prospect company. Multiple briefs, tasks, and POV outputs attach to a deal. A deal advances through stages: `prep` -> `post_call` -> `pov` -> `value_engineering`.
+
+**Success criteria** -- up to 5 measurable outcomes agreed with the prospect at POV kickoff. Stored as `deals.success_criteria` (jsonb array of `{ id, description }`). Set once on the first POV brief; immutable after that (enforced in the API route).
+
+**POV assessment** -- per-brief evaluation of each success criterion: status `met | in_progress | not_met`, verbatim evidence quote. Stored as `briefs.pov_assessment` (jsonb). Updated on every POV call.
+
+**Salesroom** -- a public, token-authenticated page at `/s/[token]` shown to the prospect. Displays POV progress (criteria status), pain quotes, relevant case studies, call recordings, and open next steps. Token is a 32-byte hex string stored in `deals.share_token`; revocable by the SC.
 
 **MEDDPICC** -- a sales qualification framework with eight elements (Metrics, Economic Buyer, Decision Criteria, Decision Process, Paper Process, Identify Pain, Champion, Competition). Each element is scored 0-3 per brief. Overall score is /24.
 
@@ -39,32 +45,38 @@ This version has breaking changes -- APIs, conventions, and file structure may a
 
 ## Current build state
 
-Schema version: v2 (deals + deal_tasks). Run the full `supabase/schema.sql` in the Supabase SQL editor on a fresh install; run the "Migration v2" block on an existing install.
+Schema version: v3 (POV columns). Run the full `supabase/schema.sql` in the Supabase SQL editor on a fresh install; run the "Migration v3" block on an existing install.
 
 ### Tables
 - `product_contexts` -- one per user, stores crawled product data
-- `deals` -- one per prospect/opportunity; columns: id, user_id, prospect_name, prospect_company, stage, created_at, updated_at
-- `briefs` -- one per analysis run; columns: id, user_id, deal_id, stage, prospect_name, prospect_company, discovery_notes, meddpicc (jsonb), matched_case_studies (jsonb), follow_up_email, delta (jsonb), risks (jsonb), created_at, updated_at
+- `deals` -- one per prospect/opportunity; columns: id, user_id, prospect_name, prospect_company, stage, success_criteria (jsonb), share_token (text unique), created_at, updated_at
+- `briefs` -- one per analysis run; columns: id, user_id, deal_id, stage, prospect_name, prospect_company, discovery_notes, meddpicc (jsonb), matched_case_studies (jsonb), follow_up_email, delta (jsonb), risks (jsonb), pov_assessment (jsonb), recording_url (text), created_at, updated_at
 - `deal_tasks` -- one per extracted next action; columns: id, deal_id, description, status, source, owner, reminder_at, completed_at, created_at
 
 ### Key routes
-- `POST /api/analyze` -- prep brief: finds/creates a deal, runs scoreMeddpicc + matchCaseStudies + generateQuestions + draftPrepEmail, saves brief, streams NDJSON, redirects to `/deal/[id]`
+- `POST /api/analyze` -- prep brief: finds/creates a deal, runs scoreMeddpicc + matchCaseStudies + generateQuestions + draftPrepEmail, saves brief, streams NDJSON
 - `POST /api/deals/[id]/post-call` -- post-call analysis: scoreMeddpicc + computeDelta + identifyRisks + updateQuestions + draftPostCallEmail + generateNextActions, saves brief + deal_tasks, advances deal stage
+- `POST /api/deals/[id]/pov` -- POV analysis: saves success_criteria if first POV, scoreMeddpicc + computeDelta + assessPovCriteria + identifyRisks + updateQuestions + draftPovCallEmail + generateNextActions, saves brief + deal_tasks, advances deal stage
+- `PATCH /api/deals/[id]/share` -- generate or revoke share_token on a deal ({ action: "generate" | "revoke" })
 - `PATCH /api/deals/[id]/tasks/[taskId]` -- toggle task status (open/done)
 - `GET /api/deals/[id]` -- fetch deal with briefs and tasks
 
 ### Key pages
 - `/dashboard` -- lists deals (not raw briefs)
-- `/brief/new` -- prep brief form; redirects to `/deal/[id]` on completion
-- `/deal/[id]` -- deal view: latest MEDDPICC, score delta, risks, task list, timeline of briefs
+- `/brief/new` -- prep brief form; shows review step before navigating to deal
+- `/deal/[id]` -- deal view: MEDDPICC, delta, risks, POV progress, salesroom share, task list, briefs timeline
 - `/deal/[id]/post-call/new` -- post-call analysis form
+- `/deal/[id]/pov/new` -- POV analysis form (criteria builder on first use, call type select, recording URL)
+- `/s/[token]` -- public prospect salesroom (no auth required; token is the credential)
 
 ### Shared analysis lib
-All AI functions live in `src/lib/analysis.ts`: `scoreMeddpicc`, `matchCaseStudies`, `generateQuestions`, `updateQuestions`, `identifyRisks`, `generateNextActions`, `draftPrepEmail`, `draftPostCallEmail`, `computeDelta` (pure).
+All AI functions live in `src/lib/analysis.ts`: `scoreMeddpicc`, `matchCaseStudies`, `generateQuestions`, `updateQuestions`, `identifyRisks`, `generateNextActions`, `assessPovCriteria`, `draftPrepEmail`, `draftPostCallEmail`, `draftPovCallEmail`, `computeDelta` (pure).
+
+### Middleware
+`src/lib/supabase/middleware.ts` redirects unauthenticated users to `/login` for all paths except: `/login`, `/api/*`, `/auth/*`, `/`, `/privacy`, `/s/*` (salesroom).
 
 ### Reminders
 In-app only. Tasks with `reminder_at < now()` render an overdue badge in the deal view. No email infrastructure wired up yet.
 
 ### Next stages to build
-- POV (Proof of Value) stage
 - Value Engineering stage

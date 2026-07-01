@@ -617,6 +617,8 @@ export default function NewBriefPage() {
       follow_up_email: stream.email ?? "",
       delta: null,
       risks: [],
+      pov_assessment: [],
+      recording_url: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
