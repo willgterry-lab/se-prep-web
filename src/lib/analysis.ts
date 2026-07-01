@@ -88,7 +88,7 @@ Score each MEDDPICC element from 0-3:
 2 = Clear evidence
 3 = Explicitly confirmed and strong
 
-Return ONLY valid JSON in this exact shape:
+Return ONLY valid JSON with no code fences or preamble, in this exact shape:
 {
   "metrics": { "score": 0-3, "evidence": "verbatim quote or 'none'", "gap": "what is missing" },
   "economic_buyer": { "score": 0-3, "evidence": "verbatim quote or 'none'", "gap": "what is missing" },
@@ -137,7 +137,7 @@ ${JSON.stringify(product.case_studies, null, 2)}
 
 Select the top 3 most relevant case studies and explain why each is relevant.
 
-Return ONLY valid JSON array:
+Return ONLY valid JSON with no code fences or preamble:
 [
   {
     "title": "exact title from case studies",
@@ -177,7 +177,7 @@ export async function generateQuestions(
 
   const message = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 1024,
+    max_tokens: 2048,
     messages: [
       {
         role: "user",
@@ -190,7 +190,7 @@ ${discovery_notes}
 MEDDPICC gaps identified:
 ${gaps || "None significant"}
 
-Generate 9 questions in three categories. Return ONLY valid JSON:
+Generate 9 questions in three categories. Return ONLY valid JSON with no code fences or preamble:
 {
   "sc_intro": ["q1", "q2", "q3"],
   "discovery": ["q1", "q2", "q3"],
@@ -201,7 +201,10 @@ sc_intro: 3 questions to open the first SC call -- build rapport, confirm unders
 discovery: 3 questions to go deeper on the MEDDPICC gaps identified above -- uncover what the AE didn't get to.
 technical: 3 questions to understand the technical landscape, existing stack, and integration requirements relevant to ${product.company}.
 
-Questions should be specific to this prospect's situation, not generic.`,
+Rules:
+- Each question must be under 20 words.
+- Questions should be specific to this prospect's situation, not generic.
+- No em-dashes.`,
       },
     ],
   })
@@ -232,7 +235,7 @@ export async function updateQuestions(
 
   const message = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: 2048,
     messages: [
       {
         role: "user",
@@ -252,7 +255,7 @@ ${remainingGaps || "None -- all elements scored 3"}
 Review each prepared question. Determine whether it was effectively answered on this call.
 Then generate any new questions needed for gaps that are still open or newly identified.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with no code fences or preamble:
 {
   "open": {
     "sc_intro": ["questions for the next call -- advance the relationship and agenda"],
@@ -271,7 +274,8 @@ Rules:
 - "open" contains: (a) prepared questions not yet answered, and (b) new questions for still-open gaps.
 - Do not include the same question in both categories.
 - New questions must be specific to this prospect's situation, grounded in the transcript.
-- sc_intro in "open" should help open the NEXT call, not this one.`,
+- sc_intro in "open" should help open the NEXT call, not this one.
+- Each question must be under 20 words. No em-dashes.`,
       },
     ],
   })
