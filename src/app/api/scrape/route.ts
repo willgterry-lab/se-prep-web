@@ -22,6 +22,29 @@ const MAIN_PATHS = [
 
 const BLOG_PATHS = ["/blog", "/resources", "/insights", "/learn", "/content", "/articles"]
 
+// Hardwired competitor lists by hostname — used when scraping reliably misses them.
+const HARDWIRED_COMPETITORS: Record<string, string[]> = {
+  "choco.com": [
+    "REKKI",
+    "BlueCart",
+    "Pepper",
+    "Cut+Dry",
+    "MarketMan",
+    "Toast",
+    "Apicbase",
+    "Margined",
+    "Aptean",
+    "Icicle",
+    "Minotaur",
+  ],
+}
+
+// Hardwired customer story index URLs by hostname — for sites that use locale-prefixed paths
+// or non-standard structures the generic crawler misses.
+const HARDWIRED_STORY_INDEXES: Record<string, string[]> = {
+  "choco.com": ["https://choco.com/uk/stories"],
+}
+
 // Non-standard customer story index paths — companies use all sorts of URL schemes
 const CUSTOMER_INDEX_PATHS = [
   "/magazine/articles/customer-stories",
@@ -169,7 +192,8 @@ function collectLinks(results: readonly (readonly [string, PageResult])[]): stri
 }
 
 function isCaseStudyLink(url: string): boolean {
-  return /case-stud|customer-stor|success-stor|client-stor|customer-story|-customer-story|\/magazine\/[^/]+-story/.test(url.toLowerCase())
+  // \/stories\/[^/] catches locale-prefixed paths like /uk/stories/slug (e.g. Choco)
+  return /case-stud|customer-stor|success-stor|client-stor|customer-story|-customer-story|\/magazine\/[^/]+-story|\/stories\/[^/]/.test(url.toLowerCase())
 }
 
 // Competitor content: "vs" pages, comparison pages, alternatives pages, and blog posts
@@ -191,11 +215,16 @@ export async function POST(req: NextRequest) {
   }
 
   const hostname = new URL(url).hostname
+  const rootHostname = hostname.replace(/^www\./, "")
 
   const mainUrls = MAIN_PATHS.map((p) => `https://${hostname}${p}`)
   const blogUrls = BLOG_PATHS.map((p) => `https://${hostname}${p}`)
 
-  const customerIndexUrls = CUSTOMER_INDEX_PATHS.map((p) => `https://${hostname}${p}`)
+  const extraStoryIndexes = HARDWIRED_STORY_INDEXES[rootHostname] ?? []
+  const customerIndexUrls = [
+    ...CUSTOMER_INDEX_PATHS.map((p) => `https://${hostname}${p}`),
+    ...extraStoryIndexes,
+  ]
 
   // Phase 1 — main pages + blog index + customer story indexes + SaaSHub + sitemap all in parallel
   const [mainResults, blogIndexResults, customerIndexResults, saashubText, sitemapText] = await Promise.all([
@@ -306,10 +335,24 @@ Return ONLY valid JSON. No prose, no markdown fences.`
   } catch {
     const fenced = raw.match(/```(?:json)?\s*([\s\S]+?)```/)
     if (fenced) {
-      extracted = JSON.parse(fenced[1])
-    } else {
+      try { extracted = JSON.parse(fenced[1]) } catch {}
+    }
+    if (!extracted) {
+      const start = raw.search(/[\[{]/)
+      const end = Math.max(raw.lastIndexOf("}"), raw.lastIndexOf("]"))
+      if (start !== -1 && end > start) {
+        try { extracted = JSON.parse(raw.slice(start, end + 1)) } catch {}
+      }
+    }
+    if (!extracted) {
       return NextResponse.json({ error: "Failed to parse extracted data." }, { status: 500 })
     }
+  }
+
+  // Override competitors with hardwired list when available — scraping reliably misses these.
+  const hardwiredCompetitors = HARDWIRED_COMPETITORS[rootHostname]
+  if (hardwiredCompetitors) {
+    extracted.competitor_mentions = hardwiredCompetitors
   }
 
   return NextResponse.json({ extracted })
