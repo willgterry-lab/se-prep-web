@@ -8,11 +8,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import type { MeddpiccScore, MatchedCaseStudy } from "@/types"
+import { BriefView } from "@/components/brief-view"
+import type { MeddpiccScore, MatchedCaseStudy, Brief } from "@/types"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Phase = "form" | "streaming" | "done"
+type Phase = "form" | "streaming" | "review"
 
 type StreamState = {
   phase: Phase
@@ -20,6 +21,8 @@ type StreamState = {
   caseStudies: MatchedCaseStudy[] | null
   email: string | null
   error: string | null
+  briefId: string | null
+  dealId: string | null
 }
 
 type UploadedFile = {
@@ -216,6 +219,8 @@ export default function NewBriefPage() {
     caseStudies: null,
     email: null,
     error: null,
+    briefId: null,
+    dealId: null,
   })
 
   function setNotes(updater: string | ((prev: string) => string)) {
@@ -394,7 +399,7 @@ export default function NewBriefPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setStream({ phase: "streaming", meddpicc: null, caseStudies: null, email: null, error: null })
+    setStream({ phase: "streaming", meddpicc: null, caseStudies: null, email: null, error: null, briefId: null, dealId: null })
 
     try {
       const res = await fetch("/api/analyze", {
@@ -431,8 +436,12 @@ export default function NewBriefPage() {
           } else if (event.type === "email") {
             setStream((s) => ({ ...s, email: event.data }))
           } else if (event.type === "done") {
-            setStream((s) => ({ ...s, phase: "done" }))
-            router.push(`/deal/${event.data.deal_id}`)
+            setStream((s) => ({
+              ...s,
+              phase: "review",
+              briefId: event.data.brief_id,
+              dealId: event.data.deal_id,
+            }))
           } else if (event.type === "error") {
             throw new Error(event.message)
           }
@@ -592,7 +601,29 @@ export default function NewBriefPage() {
     )
   }
 
-  // ── Streaming / done ──────────────────────────────────────────────────────
+  // ── Review — full interactive brief before navigating to the deal ─────────
+
+  if (stream.phase === "review" && stream.meddpicc && stream.briefId && stream.dealId) {
+    const brief: Brief = {
+      id: stream.briefId,
+      user_id: "",
+      deal_id: stream.dealId,
+      stage: "prep",
+      prospect_name: form.prospect_name,
+      prospect_company: form.prospect_company,
+      discovery_notes: form.discovery_notes,
+      meddpicc: stream.meddpicc,
+      matched_case_studies: stream.caseStudies ?? [],
+      follow_up_email: stream.email ?? "",
+      delta: null,
+      risks: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    return <BriefView brief={brief} continueHref={`/deal/${stream.dealId}`} />
+  }
+
+  // ── Streaming ─────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

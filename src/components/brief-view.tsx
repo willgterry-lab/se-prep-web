@@ -260,7 +260,7 @@ function SuggestedQuestionsCard({ questions }: { questions: SuggestedQuestions }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function BriefView({ brief }: { brief: Brief }) {
+export function BriefView({ brief, continueHref }: { brief: Brief; continueHref?: string }) {
   const m = brief.meddpicc
   const allStudies = brief.matched_case_studies ?? []
 
@@ -555,7 +555,13 @@ export function BriefView({ brief }: { brief: Brief }) {
         >
           ← Back to dashboard
         </Link>
-        <DeleteBriefButton briefId={brief.id} />
+        {continueHref ? (
+          <Link href={continueHref} className={cn(buttonVariants())}>
+            Continue to deal →
+          </Link>
+        ) : (
+          <DeleteBriefButton briefId={brief.id} />
+        )}
       </div>
     </div>
   )
