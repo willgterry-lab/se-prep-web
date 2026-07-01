@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import {
   scoreMeddpicc,
   computeDelta,
+  extractSuccessCriteria,
   assessPovCriteria,
   identifyRisks,
   updateQuestions,
@@ -26,8 +27,7 @@ export async function POST(
 
   const scName = (user.user_metadata?.full_name as string | undefined) ?? ""
 
-  const { transcript, recording_url, call_type, success_criteria: submittedCriteria } =
-    await req.json()
+  const { transcript, recording_url, call_type } = await req.json()
 
   const [{ data: deal }, { data: ctx }] = await Promise.all([
     supabase.from("deals").select("*").eq("id", dealId).eq("user_id", user.id).single(),
@@ -39,19 +39,8 @@ export async function POST(
 
   const product = ctx as ProductContext
 
-  // Set success criteria on the deal if not yet defined.
   let criteriaToUse: SuccessCriterion[] = (deal.success_criteria as SuccessCriterion[]) ?? []
-  if (!criteriaToUse.length && Array.isArray(submittedCriteria) && submittedCriteria.length > 0) {
-    await supabase
-      .from("deals")
-      .update({ success_criteria: submittedCriteria })
-      .eq("id", dealId)
-    criteriaToUse = submittedCriteria as SuccessCriterion[]
-  }
-
-  if (!criteriaToUse.length) {
-    return new Response("No success criteria defined for this deal.", { status: 400 })
-  }
+  const needsExtraction = criteriaToUse.length === 0
 
   // Fetch the most recent brief for delta + question continuity + case study inheritance.
   const { data: recentBriefs } = await supabase
@@ -73,8 +62,33 @@ export async function POST(
         controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"))
 
       try {
-        const meddpicc = await scoreMeddpicc(transcript, product, deal.prospect_company)
-        emit({ type: "meddpicc", data: meddpicc })
+        // Run scoreMeddpicc and (on first POV call) extractSuccessCriteria in parallel.
+        const [meddpicc, resolvedCriteria] = await Promise.all([
+          scoreMeddpicc(transcript, product, deal.prospect_company).then((r) => {
+            emit({ type: "meddpicc", data: r })
+            return r
+          }),
+          needsExtraction
+            ? extractSuccessCriteria(transcript, product, deal.prospect_company).then((r) => {
+                emit({ type: "criteria", data: r })
+                return r
+              })
+            : Promise.resolve(criteriaToUse),
+        ])
+
+        if (needsExtraction && resolvedCriteria.length > 0) {
+          criteriaToUse = resolvedCriteria
+          await supabase
+            .from("deals")
+            .update({ success_criteria: resolvedCriteria })
+            .eq("id", dealId)
+        }
+
+        if (!criteriaToUse.length) {
+          emit({ type: "error", message: "No success criteria could be extracted from the transcript. Add them manually on the deal page." })
+          controller.close()
+          return
+        }
 
         const delta = prevBrief ? computeDelta(prevBrief.meddpicc, meddpicc) : null
         if (delta) emit({ type: "delta", data: delta })

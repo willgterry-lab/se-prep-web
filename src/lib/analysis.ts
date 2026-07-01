@@ -418,6 +418,49 @@ Rules:
   )
 }
 
+export async function extractSuccessCriteria(
+  transcript: string,
+  product: ProductContext,
+  prospect_company: string
+): Promise<SuccessCriterion[]> {
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 800,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant reviewing a POV (Proof of Value) kickoff call.
+
+Product: ${product.company} -- ${product.one_line_value}
+Prospect company: ${prospect_company}
+
+Call transcript:
+${transcript}
+
+Extract the specific, measurable success criteria that were agreed on this call for the POV trial. These are the outcomes the prospect expects the product to demonstrate during the evaluation period.
+
+Return ONLY valid JSON array with no code fences or preamble:
+[
+  { "id": 1, "description": "..." },
+  { "id": 2, "description": "..." }
+]
+
+Rules:
+- Extract only criteria that were explicitly agreed or confirmed on the call.
+- Each criterion should be specific and measurable -- use the prospect's own words where possible.
+- Return 2-5 criteria. If fewer than 2 clear criteria were agreed, return only those that were explicitly confirmed.
+- IDs must be sequential integers starting at 1.
+- Return an empty array [] only if no clear criteria were discussed.
+- No code fences or preamble.`,
+      },
+    ],
+  })
+
+  return parseJson<SuccessCriterion[]>(
+    message.content[0].type === "text" ? message.content[0].text : "[]"
+  )
+}
+
 export async function assessPovCriteria(
   transcript: string,
   success_criteria: SuccessCriterion[],

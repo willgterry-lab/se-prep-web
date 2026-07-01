@@ -15,6 +15,7 @@ type Phase = "form" | "streaming" | "done"
 
 type StreamState = {
   phase: Phase
+  criteria: SuccessCriterion[] | null
   meddpicc: MeddpiccScore | null
   delta: MeddpiccDelta | null
   povAssessment: PovAssessment[] | null
@@ -108,12 +109,12 @@ export default function PovNewPage() {
   const [deal, setDeal] = useState<Deal | null>(null)
   const [callType, setCallType] = useState<PovCallType>("setup")
   const [recordingUrl, setRecordingUrl] = useState("")
-  const [criteria, setCriteria] = useState<string[]>(["", ""])
   const [transcript, setTranscript] = useState("")
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [stream, setStream] = useState<StreamState>({
     phase: "form",
+    criteria: null,
     meddpicc: null,
     delta: null,
     povAssessment: null,
@@ -128,7 +129,6 @@ export default function PovNewPage() {
         if (data.deal) {
           const d = data.deal as Deal
           setDeal(d)
-          // Default call type based on existing pov briefs
           const povBriefCount = (data.briefs as { stage: string }[]).filter(
             (b) => b.stage === "pov"
           ).length
@@ -139,7 +139,7 @@ export default function PovNewPage() {
   }, [dealId])
 
   const existingCriteria = deal?.success_criteria ?? []
-  const needsCriteria = existingCriteria.length === 0
+  const isFirstPov = existingCriteria.length === 0
 
   async function processFiles(files: File[]) {
     const allowed = files.filter((f) =>
@@ -197,25 +197,9 @@ export default function PovNewPage() {
   }
   function removeFile(id: string) { setUploadedFiles((prev) => prev.filter((f) => f.id !== id)) }
 
-  function addCriterion() {
-    if (criteria.length < 5) setCriteria((prev) => [...prev, ""])
-  }
-  function removeCriterion(i: number) {
-    setCriteria((prev) => prev.filter((_, idx) => idx !== i))
-  }
-  function updateCriterion(i: number, value: string) {
-    setCriteria((prev) => prev.map((c, idx) => (idx === i ? value : c)))
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setStream({ phase: "streaming", meddpicc: null, delta: null, povAssessment: null, risks: null, error: null })
-
-    const builtCriteria: SuccessCriterion[] | undefined = needsCriteria
-      ? criteria
-          .map((d, i) => ({ id: i + 1, description: d.trim() }))
-          .filter((c) => c.description.length > 0)
-      : undefined
+    setStream({ phase: "streaming", criteria: null, meddpicc: null, delta: null, povAssessment: null, risks: null, error: null })
 
     try {
       const res = await fetch(`/api/deals/${dealId}/pov`, {
@@ -225,7 +209,6 @@ export default function PovNewPage() {
           transcript,
           recording_url: recordingUrl.trim() || null,
           call_type: callType,
-          success_criteria: builtCriteria,
         }),
       })
 
@@ -250,7 +233,9 @@ export default function PovNewPage() {
           if (!line.trim()) continue
           const event = JSON.parse(line)
 
-          if (event.type === "meddpicc") {
+          if (event.type === "criteria") {
+            setStream((s) => ({ ...s, criteria: event.data }))
+          } else if (event.type === "meddpicc") {
             setStream((s) => ({ ...s, meddpicc: event.data }))
           } else if (event.type === "delta") {
             setStream((s) => ({ ...s, delta: event.data }))
@@ -276,20 +261,22 @@ export default function PovNewPage() {
   }
 
   function stepStatus(
-    key: "meddpicc" | "pov_assessment" | "risks" | "email",
+    key: "scoring" | "pov_assessment" | "risks" | "email",
     s: StreamState
   ): "pending" | "active" | "done" {
-    if (key === "meddpicc") {
-      if (s.meddpicc) return "done"
+    // "scoring" covers both scoreMeddpicc and (if applicable) extractSuccessCriteria
+    const scoringDone = s.meddpicc !== null && (!isFirstPov || s.criteria !== null)
+    if (key === "scoring") {
+      if (scoringDone) return "done"
       if (s.phase === "streaming") return "active"
     }
     if (key === "pov_assessment") {
       if (s.povAssessment) return "done"
-      if (s.meddpicc) return "active"
+      if (scoringDone) return "active"
     }
     if (key === "risks") {
       if (s.risks) return "done"
-      if (s.meddpicc) return "active"
+      if (scoringDone) return "active"
     }
     if (key === "email") {
       if (s.phase === "done") return "done"
@@ -299,9 +286,6 @@ export default function PovNewPage() {
   }
 
   const hasExtracting = uploadedFiles.some((f) => f.status === "extracting")
-  const criteriaValid = needsCriteria
-    ? criteria.filter((c) => c.trim().length > 0).length >= 1
-    : true
 
   if (stream.phase !== "form") {
     return (
@@ -312,7 +296,10 @@ export default function PovNewPage() {
         </div>
         <Card>
           <CardContent className="pt-6 space-y-3">
-            <StepRow label="Scoring MEDDPICC" status={stepStatus("meddpicc", stream)} />
+            <StepRow
+              label={isFirstPov ? "Scoring MEDDPICC and extracting success criteria" : "Scoring MEDDPICC"}
+              status={stepStatus("scoring", stream)}
+            />
             <StepRow label="Assessing criteria progress" status={stepStatus("pov_assessment", stream)} />
             <StepRow label="Identifying risks and updating questions" status={stepStatus("risks", stream)} />
             <StepRow label="Drafting follow-up email and next actions" status={stepStatus("email", stream)} />
@@ -363,55 +350,16 @@ export default function PovNewPage() {
                 )
               })}
             </div>
+            {isFirstPov && (
+              <p className="text-xs text-gray-400 mt-3">
+                Success criteria will be extracted automatically from the transcript.
+              </p>
+            )}
           </CardContent>
         </Card>
 
-        {/* Success criteria - only if not yet defined */}
-        {needsCriteria && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Success criteria</CardTitle>
-              <CardDescription className="mt-1">
-                Define the criteria you agreed with the prospect for this POV. These are saved to the deal and used on all future POV calls.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {criteria.map((c, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400 w-4 shrink-0">{i + 1}.</span>
-                  <Input
-                    value={c}
-                    onChange={(e) => updateCriterion(i, e.target.value)}
-                    placeholder={`Criterion ${i + 1}`}
-                    className="flex-1"
-                  />
-                  {criteria.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeCriterion(i)}
-                      className="text-gray-300 hover:text-gray-500 text-sm"
-                      aria-label="Remove"
-                    >
-                      x
-                    </button>
-                  )}
-                </div>
-              ))}
-              {criteria.length < 5 && (
-                <button
-                  type="button"
-                  onClick={addCriterion}
-                  className="text-sm text-gray-500 hover:text-gray-800 underline underline-offset-2"
-                >
-                  + Add criterion
-                </button>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Show existing criteria as read-only */}
-        {!needsCriteria && existingCriteria.length > 0 && (
+        {/* Show existing criteria as read-only context */}
+        {!isFirstPov && existingCriteria.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle>Success criteria</CardTitle>
@@ -506,7 +454,7 @@ export default function PovNewPage() {
           type="submit"
           className="w-full"
           size="lg"
-          disabled={hasExtracting || !transcript.trim() || !criteriaValid}
+          disabled={hasExtracting || !transcript.trim()}
         >
           {hasExtracting ? "Extracting files..." : "Run POV analysis"}
         </Button>
