@@ -21,13 +21,31 @@ const MEDDPICC_ELEMENTS = [
 ] as const
 
 export function parseJson<T>(raw: string): T {
+  // 1. Raw JSON
   try {
     return JSON.parse(raw)
-  } catch {
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]+?)```/)
-    if (fenced) return JSON.parse(fenced[1])
-    throw new Error("Failed to parse JSON from Claude response")
+  } catch {}
+
+  // 2. Fenced code block
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]+?)```/)
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1].trim())
+    } catch {}
   }
+
+  // 3. Extract between outermost { } or [ ] -- handles preamble and trailing text
+  const start = raw.search(/[\[{]/)
+  const lastBrace = raw.lastIndexOf("}")
+  const lastBracket = raw.lastIndexOf("]")
+  const end = Math.max(lastBrace, lastBracket)
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(raw.slice(start, end + 1))
+    } catch {}
+  }
+
+  throw new Error(`Failed to parse JSON from Claude response: ${raw.slice(0, 200)}`)
 }
 
 export function computeDelta(prev: MeddpiccScore, curr: MeddpiccScore): MeddpiccDelta {
