@@ -132,7 +132,8 @@ export default function PovNewPage() {
           const povBriefCount = (data.briefs as { stage: string }[]).filter(
             (b) => b.stage === "pov"
           ).length
-          if (povBriefCount > 0) setCallType("checkin")
+          if (povBriefCount === 1) setCallType("checkin")
+          else if (povBriefCount >= 2) setCallType("review")
         }
       })
       .catch(() => {})

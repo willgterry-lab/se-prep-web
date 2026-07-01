@@ -297,6 +297,81 @@ function TaskRow({
   )
 }
 
+// ─── POV stage card ──────────────────────────────────────────────────────────
+
+const POV_STAGES = ["Setup", "Check-in", "Final review"]
+
+function PovStageCard({ dealId, povBriefCount }: { dealId: string; povBriefCount: number }) {
+  const nextLabel =
+    povBriefCount === 1
+      ? "Log check-in call"
+      : povBriefCount === 2
+      ? "Log final review"
+      : null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>POV stage</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="flex items-start">
+          {POV_STAGES.flatMap((label, i) => {
+            const isDone = i < povBriefCount
+            const isNext = i === povBriefCount
+            const items = [
+              <div key={label} className="flex flex-col items-center gap-1.5">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
+                    isDone
+                      ? "bg-[#1ED760] border-[#1ED760]"
+                      : isNext
+                      ? "border-gray-400 bg-white"
+                      : "border-gray-200 bg-white"
+                  }`}
+                >
+                  {isDone ? (
+                    <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <span className={`w-2 h-2 rounded-full ${isNext ? "bg-gray-400" : "bg-gray-200"}`} />
+                  )}
+                </div>
+                <span
+                  className={`text-xs text-center leading-tight max-w-[56px] ${
+                    isDone ? "font-medium text-gray-800" : isNext ? "text-gray-600" : "text-gray-300"
+                  }`}
+                >
+                  {label}
+                </span>
+              </div>,
+            ]
+            if (i < POV_STAGES.length - 1) {
+              items.push(
+                <div
+                  key={`c${i}`}
+                  className={`flex-1 h-px mt-4 mx-1 ${i < povBriefCount - 1 ? "bg-[#1ED760]" : "bg-gray-200"}`}
+                />
+              )
+            }
+            return items
+          })}
+        </div>
+
+        {nextLabel && (
+          <Link
+            href={`/deal/${dealId}/pov/new`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            {nextLabel}
+          </Link>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── POV progress card ────────────────────────────────────────────────────────
 
 function PovProgressCard({
@@ -445,9 +520,11 @@ export function DealView({
 }) {
   const latestBrief = briefs.length ? briefs[briefs.length - 1] : null
   const postCallBrief = briefs.find((b) => b.stage === "post_call") ?? null
-  const latestPovBrief = [...briefs].reverse().find((b) => b.stage === "pov") ?? null
+  const povBriefs = briefs.filter((b) => b.stage === "pov")
+  const povBriefCount = povBriefs.length
+  const latestPovBrief = povBriefs.length > 0 ? povBriefs[povBriefs.length - 1] : null
   const hasPostCall = !!postCallBrief
-  const hasPov = !!latestPovBrief
+  const hasPov = povBriefCount > 0
 
   const m = latestBrief?.meddpicc ?? null
   const displayScore = m ? toDisplayScore(m.overall_score) : null
@@ -489,7 +566,12 @@ export function DealView({
         <RiskCard risks={postCallBrief.risks} />
       )}
 
-      {/* POV progress */}
+      {/* POV stage progress */}
+      {hasPov && (
+        <PovStageCard dealId={deal.id} povBriefCount={povBriefCount} />
+      )}
+
+      {/* POV criteria progress */}
       {hasPov && latestPovBrief && deal.success_criteria?.length > 0 && (
         <PovProgressCard
           criteria={deal.success_criteria}
