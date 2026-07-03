@@ -10,6 +10,9 @@ import type {
   SuccessCriterion,
   PovAssessment,
   PovCallType,
+  VeBaselineInput,
+  VeSliderInputs,
+  VeProposal,
 } from "@/types"
 
 const MEDDPICC_ELEMENTS = [
@@ -24,31 +27,46 @@ const MEDDPICC_ELEMENTS = [
 ] as const
 
 export function parseJson<T>(raw: string): T {
+  const trimmed = raw.trim()
+
   // 1. Raw JSON
   try {
-    return JSON.parse(raw)
+    return JSON.parse(trimmed)
   } catch {}
 
-  // 2. Fenced code block
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]+?)```/)
-  if (fenced) {
-    try {
-      return JSON.parse(fenced[1].trim())
-    } catch {}
+  // 2. Fenced code block -- slice from after the opening fence line to just before the
+  //    closing fence marker. Using indexOf("\n```") rather than endsWith so that any
+  //    prose Claude adds after the closing fence is excluded.
+  if (trimmed.startsWith("```")) {
+    const afterOpenFence = trimmed.indexOf("\n")
+    if (afterOpenFence !== -1) {
+      let inner = trimmed.slice(afterOpenFence + 1)
+      const closingFence = inner.indexOf("\n```")
+      if (closingFence !== -1) inner = inner.slice(0, closingFence)
+      try {
+        return JSON.parse(inner.trim())
+      } catch {}
+    }
   }
 
-  // 3. Extract between outermost { } or [ ] -- handles preamble and trailing text
-  const start = raw.search(/[\[{]/)
-  const lastBrace = raw.lastIndexOf("}")
-  const lastBracket = raw.lastIndexOf("]")
+  // 3. Extract between outermost [ ] or { } that appear before any closing fence
+  //    so trailing prose doesn't push lastIndexOf past the real JSON boundary.
+  const fenceEnd = trimmed.indexOf("\n```")
+  const searchIn = fenceEnd !== -1 ? trimmed.slice(0, fenceEnd) : trimmed
+  const start = searchIn.search(/[\[{]/)
+  const lastBrace = searchIn.lastIndexOf("}")
+  const lastBracket = searchIn.lastIndexOf("]")
   const end = Math.max(lastBrace, lastBracket)
   if (start !== -1 && end > start) {
     try {
-      return JSON.parse(raw.slice(start, end + 1))
+      return JSON.parse(searchIn.slice(start, end + 1))
     } catch {}
   }
 
-  throw new Error(`Failed to parse JSON from Claude response: ${raw.slice(0, 200)}`)
+  throw new Error(
+    `Failed to parse JSON from Claude response (${trimmed.length} chars): ` +
+    `START: ${trimmed.slice(0, 300)} END: ${trimmed.slice(-200)}`
+  )
 }
 
 export function computeDelta(prev: MeddpiccScore, curr: MeddpiccScore): MeddpiccDelta {
@@ -693,6 +711,272 @@ Rules:
 - No em-dashes.
 - UK English.
 - Under 180 words.
+- Format: Subject line on first line, blank line, then body.`,
+      },
+    ],
+  })
+
+  return message.content[0].type === "text" ? message.content[0].text : ""
+}
+
+export async function generateVeWorkshopQuestions(
+  aggregated_metrics_evidence: string,
+  aggregated_pain_evidence: string,
+  product: ProductContext
+): Promise<string[]> {
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 600,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant preparing for a Value Engineering workshop with a prospect.
+
+Product: ${product.company} -- ${product.one_line_value}
+
+Evidence already captured across previous calls:
+
+Metrics evidence:
+${aggregated_metrics_evidence || "None captured yet."}
+
+Pain evidence:
+${aggregated_pain_evidence || "None captured yet."}
+
+Generate 8 to 12 focused questions to ask in the VE workshop that will surface the specific quantified inputs needed to build a credible business case. Target genuine gaps -- do not ask for information already evidenced above.
+
+Each question should aim to uncover one of these types of input:
+- Time spent on the painful task (hours per week, days per month, number of people involved)
+- Cost per person or per hour involved in the task
+- Frequency and volume (how many times per week/month, how many records/reports/decisions)
+- Current error or failure rates and their consequences
+- Baseline KPI values that the product would improve
+- Financial impact of the current problem (cost of errors, rework cost, missed revenue)
+
+Return ONLY a valid JSON array of question strings with no code fences or preamble:
+["question one", "question two", ...]
+
+Rules:
+- Each question must be under 20 words.
+- No em-dashes. UK English.
+- Do not ask questions where the answer is already evidenced above.
+- Questions should be specific to the pains and gaps visible in the evidence above.`,
+      },
+    ],
+  })
+
+  return parseJson<string[]>(
+    message.content[0].type === "text" ? message.content[0].text : "[]"
+  )
+}
+
+export async function extractVeBaseline(
+  transcript: string,
+  product: ProductContext,
+  prospect_company: string
+): Promise<VeBaselineInput[]> {
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 4096,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant reviewing a Value Engineering workshop transcript.
+
+Product: ${product.company} -- ${product.one_line_value}
+Prospect company: ${prospect_company}
+
+Workshop transcript:
+${transcript}
+
+Extract every quantifiable baseline input that could underpin a value calculation. Look for:
+- Time figures (hours per week, days per month spent on a task)
+- Headcount involved in a process (number of people, FTE count)
+- Cost figures (hourly rates, loaded FTE costs, outsourcing costs, tooling costs)
+- Volume or frequency metrics (number of reports, transactions, decisions per period)
+- Error or failure rates and their financial consequences
+- KPI baselines (current conversion rate, current ROAS, current throughput)
+- Any other quantified statement about the current state
+
+Return ONLY a valid JSON array with no code fences or preamble:
+[
+  {
+    "key": "slug_style_identifier",
+    "label": "Short human label for this metric",
+    "raw_value": "exactly as stated in the transcript",
+    "numeric_value": 12,
+    "unit": "hours/week",
+    "currency": null,
+    "evidence": "verbatim quote from the transcript"
+  }
+]
+
+Rules:
+- Every item must have a verbatim evidence quote from the transcript.
+- Never invent or infer a number that was not stated.
+- numeric_value must be the primary number (e.g. for "12 hours per week", numeric_value is 12).
+- unit must describe what numeric_value measures (e.g. "hours/week", "FTE", "GBP/month", "error rate %").
+- currency should be null for non-monetary metrics (time, headcount, rates).
+- key must be lowercase, underscores only, unique within the array.
+- Return at most 12 inputs. Prioritise the most specific and evidenced figures over inferred or implied ones.
+- Return an empty array [] if no quantifiable inputs were discussed.`,
+      },
+    ],
+  })
+
+  return parseJson<VeBaselineInput[]>(
+    message.content[0].type === "text" ? message.content[0].text : "[]"
+  )
+}
+
+export async function generateValueProposal({
+  aggregated_baselines,
+  ve_slider_inputs,
+  matched_case_studies,
+  aggregated_pain_evidence,
+  product,
+  prospect_company,
+}: {
+  aggregated_baselines: VeBaselineInput[]
+  ve_slider_inputs: VeSliderInputs
+  matched_case_studies: MatchedCaseStudy[]
+  aggregated_pain_evidence: string
+  product: ProductContext
+  prospect_company: string
+}): Promise<VeProposal> {
+  const baselineText = aggregated_baselines.length
+    ? aggregated_baselines
+        .map((b) => {
+          const sliderPct = ve_slider_inputs[b.key] ?? 40
+          return `- ${b.label}: ${b.raw_value} (SC assumption: ${sliderPct}% improvement)\n  Evidence: "${b.evidence}"`
+        })
+        .join("\n")
+    : "No quantified baseline inputs captured."
+
+  const caseStudyText = matched_case_studies.length
+    ? matched_case_studies
+        .map((cs) => `- ${cs.customer}: ${cs.summary}\n  Relevance: ${cs.relevance_reason}`)
+        .join("\n")
+    : "No matched case studies available."
+
+  const pricingText = product.pricing_tiers?.length
+    ? product.pricing_tiers.map((t) => `- ${t.name}: ${t.summary}`).join("\n")
+    : "Pricing not specified."
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1800,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant building a structured value proposition for a prospect.
+
+Product: ${product.company} -- ${product.one_line_value}
+Prospect company: ${prospect_company}
+
+Identified pains (verbatim from calls):
+${aggregated_pain_evidence || "None captured."}
+
+Quantified baseline inputs (from VE workshop transcript + SC improvement assumptions):
+${baselineText}
+
+Matched case studies (reference outcomes from real customers):
+${caseStudyText}
+
+Product pricing tiers:
+${pricingText}
+
+Build a structured value proposition following these rules:
+
+RULES:
+1. Select exactly 2 to 3 value drivers based on what pains and quantified baselines are actually present. Do not invent drivers for which there is no baseline evidence.
+2. For each driver, include a one-sentence calculation showing the maths transparently. Use the baseline numbers and SC assumption percentages provided above -- do not invent percentages.
+3. The "calculated_value" field must express the value as a range (e.g. "12,000 to 18,000 per year"). Use whatever currency appears in the baseline inputs. If no monetary currency is present for a driver, express value as time or volume saved rather than a monetary figure.
+4. "pct_improvement" must equal the SC assumption percentage used for that driver (taken from the baseline inputs above).
+5. Confidence: "high" = evidenced baseline number AND a matching case study outcome; "medium" = one of those two; "low" = neither.
+6. "evidence" must be a specific outcome from one of the matched case studies above. Do not invent case study references.
+7. "investment_notes" must reference the product pricing tiers above. Express as a band, not a single figure. Note what would push it up or down.
+8. Include 1 to 3 risks or sensitivities that could reduce the value estimate.
+9. "recommended_next_step" must be a specific, concrete action -- not a generic placeholder.
+10. No buzzwords: no "leveraged", "seamless", "robust", "cutting-edge", "synergy". UK English. No em-dashes.
+11. "executive_summary" must be 2 to 3 sentences, neutral framing, specific to this prospect.
+12. "headline" must be one sentence summarising the anticipated value.
+
+Return ONLY valid JSON matching this schema exactly:
+{
+  "headline": "string",
+  "executive_summary": "string",
+  "value_drivers": [
+    {
+      "name": "string",
+      "pain_addressed": "verbatim pain from the evidence above",
+      "pct_improvement": number,
+      "calculated_value": "string (value range with currency/unit)",
+      "calculation": "one-sentence transparent maths",
+      "evidence": "specific outcome from a matched case study",
+      "confidence": "high" | "medium" | "low"
+    }
+  ],
+  "investment_notes": "string",
+  "risks_and_sensitivities": ["string"],
+  "recommended_next_step": "string",
+  "generated_at": "${new Date().toISOString()}"
+}`,
+      },
+    ],
+  })
+
+  return parseJson<VeProposal>(
+    message.content[0].type === "text" ? message.content[0].text : "{}"
+  )
+}
+
+export async function draftVeCallEmail({
+  prospect_name,
+  prospect_company,
+  transcript,
+  product,
+  baseline_inputs,
+  sc_name,
+}: {
+  prospect_name: string
+  prospect_company: string
+  transcript: string
+  product: ProductContext
+  baseline_inputs: VeBaselineInput[]
+  sc_name: string
+}): Promise<string> {
+  const baselineSummary = baseline_inputs.length
+    ? baseline_inputs.map((b) => `- ${b.label}: ${b.raw_value}`).join("\n")
+    : "No specific figures captured."
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert B2B sales writer. Draft a follow-up email from a Solutions Consultant (SC) to a prospect after a Value Engineering workshop.
+
+SC name: ${sc_name || "[SC Name]"}
+Product: ${product.company} -- ${product.one_line_value}
+Prospect name: ${prospect_name}
+Prospect company: ${prospect_company}
+
+Key baseline inputs captured in this workshop:
+${baselineSummary}
+
+Workshop transcript:
+${transcript}
+
+Rules:
+- Open directly on substance. Do NOT use: "thanks for the time", "great speaking", "as discussed", "following up on our call".
+- Reference specific figures or facts from the workshop using the prospect's own words.
+- Second paragraph: confirm what the SC will now build (the value model) and what inputs or sign-off are still needed from the prospect's side.
+- Third paragraph: confirm the next meeting or handoff point to review the value proposition.
+- Keep to 3 short paragraphs.
+- Sign off with the SC's name.
+- Plain, specific, no marketing clichés. Under 200 words.
+- UK English. No em-dashes.
 - Format: Subject line on first line, blank line, then body.`,
       },
     ],

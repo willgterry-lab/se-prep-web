@@ -619,6 +619,7 @@ export default function NewBriefPage() {
       risks: [],
       pov_assessment: [],
       recording_url: null,
+      ve_baseline_inputs: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }

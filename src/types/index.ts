@@ -83,6 +83,40 @@ export interface NextAction {
 
 export type PovCallType = "setup" | "checkin" | "review"
 
+export interface VeBaselineInput {
+  key: string
+  label: string
+  raw_value: string
+  numeric_value: number
+  unit: string
+  currency?: string | null
+  evidence: string
+}
+
+export type VeSliderInputs = Record<string, number>
+
+export type VeConfidence = "high" | "medium" | "low"
+
+export interface VeDriver {
+  name: string
+  pain_addressed: string
+  pct_improvement: number
+  calculated_value: string
+  calculation: string
+  evidence: string
+  confidence: VeConfidence
+}
+
+export interface VeProposal {
+  headline: string
+  executive_summary: string
+  value_drivers: VeDriver[]
+  investment_notes: string
+  risks_and_sensitivities: string[]
+  recommended_next_step: string
+  generated_at: string
+}
+
 export interface SuccessCriterion {
   id: number
   description: string
@@ -103,7 +137,7 @@ export interface MatchedCaseStudy extends CaseStudy {
   one_liner?: string
 }
 
-export type BriefStage = "prep" | "post_call" | "pov"
+export type BriefStage = "prep" | "post_call" | "pov" | "value_engineering"
 export type DealStage = "prep" | "post_call" | "pov" | "value_engineering"
 
 export interface Brief {
@@ -121,6 +155,7 @@ export interface Brief {
   risks: RiskItem[]
   pov_assessment: PovAssessment[]
   recording_url: string | null
+  ve_baseline_inputs: VeBaselineInput[]
   created_at: string
   updated_at: string
 }
@@ -133,6 +168,9 @@ export interface Deal {
   stage: DealStage
   success_criteria: SuccessCriterion[]
   share_token: string | null
+  ve_proposal: VeProposal | null
+  ve_slider_inputs: VeSliderInputs | null
+  ve_published: boolean
   created_at: string
   updated_at: string
 }

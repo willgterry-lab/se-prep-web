@@ -19,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="bg-[#0A192F]">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link href="/dashboard" className="font-semibold text-lg tracking-tight text-white">
-            <span className="text-[#1ED760]">SE</span> Prep
+            <span className="text-[#1ED760]">SE</span> Agent
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-white/50">{user.email}</span>

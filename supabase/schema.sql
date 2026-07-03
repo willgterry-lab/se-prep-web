@@ -156,3 +156,15 @@ alter table public.deals
 alter table public.briefs
   add column if not exists pov_assessment jsonb default '[]',
   add column if not exists recording_url  text;
+
+
+-- ─── Migration v4: Value Engineering stage ───────────────────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+
+alter table public.deals
+  add column if not exists ve_proposal      jsonb,
+  add column if not exists ve_slider_inputs jsonb,
+  add column if not exists ve_published     boolean not null default false;
+
+alter table public.briefs
+  add column if not exists ve_baseline_inputs jsonb default '[]';

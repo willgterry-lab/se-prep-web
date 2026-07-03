@@ -17,7 +17,7 @@ export default async function LandingPage() {
       <header className="sticky top-0 z-10 bg-[#0A192F]">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <span className="font-semibold text-lg tracking-tight text-white">
-            <span className="text-[#1ED760]">SE</span> Prep
+            <span className="text-[#1ED760]">SE</span> Agent
           </span>
           <Link
             href="/login"
@@ -39,7 +39,7 @@ export default async function LandingPage() {
           In minutes.
         </h1>
         <p className="mt-6 text-xl text-gray-500 leading-relaxed max-w-2xl mx-auto">
-          Paste your product URL and discovery notes. SE Prep generates your
+          Paste your product URL and discovery notes. SE Agent generates your
           MEDDPICC scorecard, matched case studies, and follow-up email —
           instantly.
         </p>
@@ -112,7 +112,7 @@ export default async function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border py-6 text-center bg-background">
         <p className="text-xs text-gray-400">
-          SE Prep · Built for Solutions Engineers ·{" "}
+          SE Agent · Built for Solutions Engineers ·{" "}
           <Link href="/privacy" className="underline hover:text-gray-600">
             Privacy policy
           </Link>

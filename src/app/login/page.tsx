@@ -29,7 +29,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-[#0A192F]">
-            <span className="text-[#1ED760]">SE</span> Prep
+            <span className="text-[#1ED760]">SE</span> Agent
           </h1>
           <p className="text-gray-500 mt-2">
             Prep for any discovery call in minutes.

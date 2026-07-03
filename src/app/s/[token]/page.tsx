@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { supabaseAdmin } from "@/lib/supabase/admin"
-import type { SuccessCriterion, PovAssessment, PovCriterionStatus, MatchedCaseStudy, DealTask } from "@/types"
+import type { SuccessCriterion, PovAssessment, PovCriterionStatus, MatchedCaseStudy, DealTask, VeProposal, VeConfidence } from "@/types"
 
 type SalesroomBrief = {
   id: string
@@ -10,6 +10,21 @@ type SalesroomBrief = {
   pov_assessment: PovAssessment[] | null
   recording_url: string | null
   created_at: string
+}
+
+function SalesroomConfidenceBadge({ confidence }: { confidence: VeConfidence }) {
+  const styles: Record<VeConfidence, string> = {
+    high: "bg-[#1ED760]/15 text-[#0A6630] border-[#1ED760]/30",
+    medium: "bg-amber-100 text-amber-700 border-amber-200",
+    low: "bg-gray-100 text-gray-500 border-gray-200",
+  }
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0 ${styles[confidence]}`}
+    >
+      {confidence} confidence
+    </span>
+  )
 }
 
 function StatusBadge({ status }: { status: PovCriterionStatus }) {
@@ -37,7 +52,7 @@ export default async function SalesroomPage({
 
   const { data: deal } = await supabaseAdmin
     .from("deals")
-    .select("id, prospect_name, prospect_company, success_criteria")
+    .select("id, prospect_name, prospect_company, success_criteria, ve_proposal, ve_published")
     .eq("share_token", token)
     .single()
 
@@ -259,6 +274,72 @@ export default async function SalesroomPage({
             </div>
           </section>
         )}
+
+        {/* Value proposal (shown only when published) */}
+        {deal.ve_published && deal.ve_proposal && (() => {
+          const proposal = deal.ve_proposal as VeProposal
+          return (
+            <section className="space-y-6 pt-4 border-t">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-widest text-[#1ED760]">
+                  Value Proposal
+                </p>
+                <p className="text-xl font-bold text-gray-900">{proposal.headline}</p>
+                <p className="text-sm text-gray-600 leading-relaxed">{proposal.executive_summary}</p>
+              </div>
+
+              <div className="space-y-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Value Drivers
+                </h2>
+                {proposal.value_drivers.map((driver, i) => (
+                  <div key={i} className="rounded-lg border p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-gray-900">{driver.name}</p>
+                      <SalesroomConfidenceBadge confidence={driver.confidence} />
+                    </div>
+                    <p className="text-xs text-gray-500 italic">{driver.pain_addressed}</p>
+                    <p className="text-lg font-bold text-[#1ED760]">{driver.calculated_value}</p>
+                    <p className="text-xs text-gray-400">{driver.calculation}</p>
+                    <p className="text-xs text-gray-500 border-l-2 border-[#1ED760] pl-3 italic">
+                      {driver.evidence}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {proposal.investment_notes && (
+                <div className="space-y-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Investment</h2>
+                  <p className="text-sm text-gray-700 bg-gray-50 rounded-md px-4 py-3">{proposal.investment_notes}</p>
+                </div>
+              )}
+
+              {proposal.risks_and_sensitivities.length > 0 && (
+                <div className="space-y-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Sensitivities</h2>
+                  <ul className="space-y-1">
+                    {proposal.risks_and_sensitivities.map((r, i) => (
+                      <li key={i} className="text-xs text-gray-500 flex gap-2">
+                        <span className="shrink-0">-</span>
+                        <span>{r}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="rounded-md bg-[#F0FDF4] border border-[#1ED760]/20 px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#0A6630]">Suggested Next Step</p>
+                <p className="text-sm text-gray-800">{proposal.recommended_next_step}</p>
+              </div>
+
+              <p className="text-[10px] text-gray-400">
+                Improvement percentages shown are estimates set by the solutions team, not guaranteed outcomes. All baseline figures are verbatim from discovery calls.
+              </p>
+            </section>
+          )
+        })()}
 
       </div>
     </div>

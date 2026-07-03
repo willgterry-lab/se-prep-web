@@ -6,7 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import type { Deal, Brief, DealTask, MeddpiccDelta, RiskItem, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus } from "@/types"
+import type { Deal, Brief, DealTask, MeddpiccDelta, RiskItem, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus, VeBaselineInput, VeSliderInputs, VeProposal, VeConfidence } from "@/types"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -507,6 +507,253 @@ function ShareSection({ dealId, initialToken }: { dealId: string; initialToken: 
   )
 }
 
+// ─── VE confidence badge ──────────────────────────────────────────────────────
+
+function VeConfidenceBadge({ confidence }: { confidence: VeConfidence }) {
+  const classes: Record<VeConfidence, string> = {
+    high: "bg-[#1ED760]/15 text-[#0A6630] border-[#1ED760]/30",
+    medium: "bg-amber-100 text-amber-700 border-amber-200",
+    low: "bg-gray-100 text-gray-500 border-gray-200",
+  }
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0 ${classes[confidence]}`}
+    >
+      {confidence} confidence
+    </span>
+  )
+}
+
+// ─── VE baseline + sliders card ───────────────────────────────────────────────
+
+function VeBaselineCard({
+  dealId,
+  baselines,
+  sliders,
+  onSlidersChange,
+  onGenerate,
+  generating,
+  hasProposal,
+}: {
+  dealId: string
+  baselines: VeBaselineInput[]
+  sliders: VeSliderInputs
+  onSlidersChange: (key: string, value: number) => void
+  onGenerate: () => void
+  generating: boolean
+  hasProposal: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle>Baseline inputs</CardTitle>
+            <CardDescription className="mt-1">
+              Quantified inputs extracted from the VE workshop. Adjust the sliders to set your improvement assumptions before generating the value proposal.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {baselines.length === 0 ? (
+          <p className="text-sm text-gray-500">No baseline inputs captured yet. Log a VE workshop call to extract them.</p>
+        ) : (
+          <>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              Slider values are your assumptions, not evidenced outcomes. They will be clearly labelled as such in the value proposal.
+            </p>
+            <div className="divide-y">
+              {baselines.map((b) => {
+                const pct = sliders[b.key] ?? 40
+                const improved = (b.numeric_value * pct / 100).toFixed(1)
+                return (
+                  <div key={b.key} className="py-4 first:pt-0 last:pb-0 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{b.label}</p>
+                        <p className="text-xs text-gray-500">
+                          {b.raw_value}
+                          {b.currency && ` (${b.currency})`}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold text-[#1ED760] shrink-0">
+                        {pct}% improvement
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={5}
+                      max={90}
+                      step={5}
+                      value={pct}
+                      onChange={(e) => onSlidersChange(b.key, Number(e.target.value))}
+                      className="w-full accent-[#1ED760]"
+                    />
+                    <p className="text-xs text-gray-400">
+                      {improved} {b.unit} improvement estimated
+                    </p>
+                    {b.evidence && (
+                      <p className="text-xs text-gray-400 italic border-l-2 border-gray-200 pl-2">
+                        &ldquo;{b.evidence}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <Button onClick={onGenerate} disabled={generating} className="w-full">
+              {generating
+                ? "Generating..."
+                : hasProposal
+                ? "Regenerate value proposal"
+                : "Generate value proposal"}
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── VE proposal card ─────────────────────────────────────────────────────────
+
+function VeProposalCard({ proposal }: { proposal: VeProposal }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Value proposal</CardTitle>
+        <CardDescription className="mt-1">{proposal.headline}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <p className="text-sm text-gray-700 leading-relaxed">{proposal.executive_summary}</p>
+
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Value Drivers</p>
+          {proposal.value_drivers.map((driver, i) => (
+            <div key={i} className="rounded-lg border p-4 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-gray-900">{driver.name}</p>
+                <VeConfidenceBadge confidence={driver.confidence} />
+              </div>
+              <p className="text-xs text-gray-500 italic">{driver.pain_addressed}</p>
+              <p className="text-lg font-bold text-[#1ED760]">{driver.calculated_value}</p>
+
+              {/* Improvement bar */}
+              <div className="space-y-1">
+                <p className="text-[10px] text-amber-600 font-medium">SC assumption: {driver.pct_improvement}% improvement</p>
+                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                  <div
+                    className="h-2 rounded-full bg-[#1ED760]"
+                    style={{ width: `${driver.pct_improvement}%` }}
+                  />
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500">{driver.calculation}</p>
+              <p className="text-xs text-gray-500 border-l-2 border-[#1ED760] pl-3 italic">{driver.evidence}</p>
+            </div>
+          ))}
+        </div>
+
+        {proposal.investment_notes && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Investment</p>
+            <p className="text-sm text-gray-700 bg-gray-50 rounded-md px-4 py-3">{proposal.investment_notes}</p>
+          </div>
+        )}
+
+        {proposal.risks_and_sensitivities.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Risks and Sensitivities</p>
+            <ul className="space-y-1">
+              {proposal.risks_and_sensitivities.map((r, i) => (
+                <li key={i} className="text-xs text-gray-600 flex gap-2">
+                  <span className="text-gray-400 shrink-0">-</span>
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="rounded-md bg-[#F0FDF4] border border-[#1ED760]/20 px-4 py-3 space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#0A6630]">Recommended Next Step</p>
+          <p className="text-sm text-gray-800">{proposal.recommended_next_step}</p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── VE publish section ───────────────────────────────────────────────────────
+
+function VePublishSection({
+  dealId,
+  initialPublished,
+  hasProposal,
+}: {
+  dealId: string
+  initialPublished: boolean
+  hasProposal: boolean
+}) {
+  const [published, setPublished] = useState(initialPublished)
+  const [loading, setLoading] = useState(false)
+
+  async function toggle() {
+    setLoading(true)
+    try {
+      const action = published ? "unpublish" : "publish"
+      const res = await fetch(`/api/deals/${dealId}/ve-proposal`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      if (res.ok) setPublished(!published)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Value proposal - salesroom</CardTitle>
+        <CardDescription className="mt-1">
+          Publish the value proposal to the prospect salesroom, or download a PDF copy.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-center gap-3">
+        <Button
+          variant={published ? "outline" : "default"}
+          onClick={toggle}
+          disabled={loading || !hasProposal}
+        >
+          {loading
+            ? "Updating..."
+            : published
+            ? "Unpublish from salesroom"
+            : "Publish to salesroom"}
+        </Button>
+        {hasProposal && (
+          <a
+            href={`/api/deals/${dealId}/ve-proposal.pdf`}
+            className="text-sm text-gray-600 underline underline-offset-2 hover:text-gray-900"
+          >
+            Download PDF
+          </a>
+        )}
+        {published && (
+          <span className="text-xs text-[#1ED760] font-medium">Live on salesroom</span>
+        )}
+        {!hasProposal && (
+          <p className="text-xs text-gray-400">Generate a value proposal above first.</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function DealView({
@@ -525,6 +772,55 @@ export function DealView({
   const latestPovBrief = povBriefs.length > 0 ? povBriefs[povBriefs.length - 1] : null
   const hasPostCall = !!postCallBrief
   const hasPov = povBriefCount > 0
+
+  // VE computed values
+  const veBriefs = briefs.filter((b) => b.stage === "value_engineering")
+  const hasVe = veBriefs.length > 0
+
+  // Aggregate baseline inputs across VE briefs (dedup by key, last-write-wins)
+  const baselineMap = new Map<string, VeBaselineInput>()
+  for (const b of veBriefs) {
+    for (const inp of (b.ve_baseline_inputs as VeBaselineInput[]) ?? []) {
+      baselineMap.set(inp.key, inp)
+    }
+  }
+  const aggregatedBaselines = [...baselineMap.values()]
+
+  // Slider state: initialise from saved ve_slider_inputs, defaulting to 40
+  const [sliders, setSliders] = useState<VeSliderInputs>(() => {
+    const saved = deal.ve_slider_inputs ?? {}
+    return aggregatedBaselines.reduce<VeSliderInputs>((acc, b) => {
+      acc[b.key] = saved[b.key] ?? 40
+      return acc
+    }, {})
+  })
+
+  const [veProposal, setVeProposal] = useState<VeProposal | null>(deal.ve_proposal)
+  const [generating, setGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
+
+  function handleSliderChange(key: string, value: number) {
+    setSliders((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function handleGenerateProposal() {
+    setGenerating(true)
+    setGenerateError(null)
+    try {
+      const res = await fetch(`/api/deals/${deal.id}/ve-proposal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ve_slider_inputs: sliders }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to generate proposal.")
+      setVeProposal(data.proposal)
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "Something went wrong.")
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   const m = latestBrief?.meddpicc ?? null
   const displayScore = m ? toDisplayScore(m.overall_score) : null
@@ -584,6 +880,35 @@ export function DealView({
         <ShareSection dealId={deal.id} initialToken={deal.share_token} />
       )}
 
+      {/* VE baseline + sliders */}
+      {hasVe && (
+        <VeBaselineCard
+          dealId={deal.id}
+          baselines={aggregatedBaselines}
+          sliders={sliders}
+          onSlidersChange={handleSliderChange}
+          onGenerate={handleGenerateProposal}
+          generating={generating}
+          hasProposal={!!veProposal}
+        />
+      )}
+
+      {generateError && (
+        <p className="text-sm text-red-600">{generateError}</p>
+      )}
+
+      {/* VE proposal */}
+      {veProposal && <VeProposalCard proposal={veProposal} />}
+
+      {/* VE publish */}
+      {hasVe && (
+        <VePublishSection
+          dealId={deal.id}
+          initialPublished={deal.ve_published}
+          hasProposal={!!veProposal}
+        />
+      )}
+
       {/* Task list */}
       {tasks.length > 0 && <TaskList dealId={deal.id} initialTasks={tasks} />}
 
@@ -612,6 +937,21 @@ export function DealView({
               className={cn(buttonVariants())}
             >
               Start POV
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* VE CTA */}
+      {hasPov && !hasVe && (
+        <Card className="border-dashed">
+          <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
+            <p className="text-sm text-gray-600">Ready to run a Value Engineering workshop?</p>
+            <Link
+              href={`/deal/${deal.id}/value-engineering/new`}
+              className={cn(buttonVariants())}
+            >
+              Log VE workshop
             </Link>
           </CardContent>
         </Card>
