@@ -1,6 +1,61 @@
 # Session log
 
-## Current state (2026-07-05, multi-call POV upload)
+## Current state (2026-07-05, live Chrome verification)
+
+### Completed this session
+Migrations v6-v8 were run against the live Supabase instance. Chrome extension connected
+successfully (via `/chrome`) after previously being unavailable all session -- did a full live
+click-through of the Bramwell deal for the first time this session, rather than relying on code
+review alone. This caught two real bugs that static review had missed:
+
+- **`generateValueProposal` `max_tokens` too low (1800) for the tightened prompt.** Clicking
+  "Regenerate value proposal" failed with "Unexpected end of JSON input" -- the extra reasoning
+  required by the 2026-07-05 unit-conversion/range-methodology prompt fix pushed output past the
+  old limit, truncating mid-JSON. Raised to 4096 (same fix pattern as `extractVeBaseline`'s
+  documented 1000->4096 history). Regenerating twice more after the fix succeeded both times.
+- **The "single figure, not a fake range" escape hatch wasn't being followed.** One regenerated
+  driver's reasoning correctly concluded only one figure was supportable and said so in the
+  "calculation" text, but `calculated_value` still rendered "1,040 to 1,040" -- the model wasn't
+  told the *output format* must change, just that it should reason its way to a single figure.
+  Added an explicit rule: "X to X" with the same number on both sides is never acceptable output.
+  Verified fixed on the next regeneration (all three drivers came back with genuine, non-repeating
+  ranges).
+
+**Confirmed working live** (not just via code/DB inspection): risk score header + legend +
+click-to-expand explainer; score history table across all 6 real stages; stage badge
+capitalisation fix; stakeholder inline edit (opened, cancelled cleanly); "Resolved risks" section
+against real multi-call history (several risks correctly shown as no-longer-flagged with accurate
+"last flagged at" stage labels); "+ Set date" replacing the placeholder-date bug; VE number
+formatting (£2,000/person, £200/credit, etc., no more "2000.0 GBP/person"); `/settings` page and
+header email link; and, most importantly, the **salesroom task filter** -- confirmed the exact
+internal task from the original QA report ("Treat £400k attrition figure as soft directional
+context...") is completely absent from the live public salesroom page, with only genuine
+Prospect/Joint tasks showing.
+
+**New multi-call POV feature smoke-tested end-to-end** with two short synthetic transcripts (a
+check-in-style and a final-review-style call) added to the real Bramwell deal's POV form:
+classification correctly identified both stages and the correct order, each with an accurate
+verbatim-quote-grounded reasoning, and the confirm screen rendered correctly (editable call-type
+picker, up/down reorder controls disabled at the right boundaries). Stopped at the confirm screen
+and clicked "Back" rather than "Run analysis" -- did not want to write synthetic test briefs into
+the user's real demo deal. The actual batch-processing/save path is therefore still unverified
+end-to-end; only classification and the confirm UI have been exercised against real data.
+
+**Confirmed NOT retroactive** (expected, documented behaviour, not a bug): Bramwell's existing VE
+baseline data (headcount, order volume, AOV sliders) still shows the pre-fix behaviour since it
+predates the category/direction tagging -- needs a fresh VE call logged to pick up the fix. The
+value proposition ranges/unit-conversion fix, by contrast, was picked up immediately on
+regeneration since that's a prompt fix applied at generation time, not extraction time.
+
+### Outstanding
+- Batch POV analysis (the actual save path, not just classify) still not run against real data --
+  worth a real dry run before the demo, ideally with real setup/check-in/review transcripts on a
+  throwaway test deal rather than Bramwell.
+- Consider whether to regenerate Bramwell's VE baseline data (re-log the VE call) before the demo
+  so the slider-eligibility fix is visible there too, or accept it as a known gap for this
+  particular deal.
+
+## Prior state (2026-07-05, multi-call POV upload)
 
 ### Completed this session
 Built for an upcoming demo: ability to upload several POV call transcripts at once (e.g. setup +
