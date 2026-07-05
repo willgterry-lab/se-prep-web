@@ -9,22 +9,17 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { computeRiskScore } from "@/lib/risk-score"
 import { cn } from "@/lib/utils"
-import type { Deal, Brief, DealTask, MeddpiccDelta, MeddpiccScore, RiskItem, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus, VeBaselineInput, VeSliderInputs, VeProposal, VeConfidence, DealStakeholder, SuggestedQuestions } from "@/types"
+import {
+  MEDDPICC_LABELS,
+  MEDDPICC_ELEMENTS,
+  toDisplayScore,
+  ScorePip,
+  RiskCard,
+  riskScoreColor,
+} from "@/components/score-display"
+import type { Deal, Brief, DealTask, MeddpiccScore, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus, VeBaselineInput, VeSliderInputs, VeProposal, VeConfidence, DealStakeholder, SuggestedQuestions } from "@/types"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const MEDDPICC_LABELS: Record<string, string> = {
-  metrics: "Metrics",
-  economic_buyer: "Economic Buyer",
-  decision_criteria: "Decision Criteria",
-  decision_process: "Decision Process",
-  paper_process: "Paper Process",
-  identify_pain: "Identify Pain",
-  champion: "Champion",
-  competition: "Competition",
-}
-
-const MEDDPICC_ELEMENTS = Object.keys(MEDDPICC_LABELS) as Array<keyof typeof MEDDPICC_LABELS>
 
 const STAGE_LABELS: Record<Deal["stage"], string> = {
   prep: "Prep",
@@ -34,36 +29,6 @@ const STAGE_LABELS: Record<Deal["stage"], string> = {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function toDisplayScore(raw: number) {
-  return Math.round((raw / 24) * 100)
-}
-
-function ScorePip({ score }: { score: number }) {
-  const colors = ["bg-gray-200", "bg-red-400", "bg-amber-400", "bg-[#1ED760]"]
-  return (
-    <div className="flex gap-1">
-      {[1, 2, 3].map((i) => (
-        <span
-          key={i}
-          className={`w-2 h-2 rounded-full ${i <= score ? colors[score] : "bg-gray-200"}`}
-        />
-      ))}
-    </div>
-  )
-}
-
-function ChangeChip({ change }: { change: number }) {
-  if (change === 0) return <span className="text-xs text-gray-400">no change</span>
-  const positive = change > 0
-  return (
-    <span
-      className={`text-xs font-semibold ${positive ? "text-[#1ED760]" : "text-red-500"}`}
-    >
-      {positive ? "+" : ""}{change}
-    </span>
-  )
-}
 
 function PovStatusBadge({ status }: { status: PovCriterionStatus }) {
   const classes = {
@@ -78,72 +43,6 @@ function PovStatusBadge({ status }: { status: PovCriterionStatus }) {
     >
       {labels[status]}
     </span>
-  )
-}
-
-function SeverityBadge({ severity }: { severity: RiskItem["severity"] }) {
-  const classes = {
-    high: "bg-red-100 text-red-700 border-red-200",
-    medium: "bg-amber-100 text-amber-700 border-amber-200",
-    low: "bg-gray-100 text-gray-600 border-gray-200",
-  }
-  return (
-    <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${classes[severity]}`}
-    >
-      {severity}
-    </span>
-  )
-}
-
-// ─── Delta card ───────────────────────────────────────────────────────────────
-
-function DeltaCard({ delta }: { delta: MeddpiccDelta }) {
-  const prevDisplay = toDisplayScore(delta.overall_prev)
-  const currDisplay = toDisplayScore(delta.overall_curr)
-  const overallChange = currDisplay - prevDisplay
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Score movement</CardTitle>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-gray-500">{prevDisplay}/100</span>
-            <span className="text-gray-400">to</span>
-            <span
-              className={`font-bold ${delta.overall_curr >= 16 ? "text-[#1ED760]" : delta.overall_curr >= 8 ? "text-amber-500" : "text-red-500"}`}
-            >
-              {currDisplay}/100
-            </span>
-            <ChangeChip change={overallChange} />
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-y-1">
-          {MEDDPICC_ELEMENTS.map((key) => {
-            const el = delta[key as keyof MeddpiccDelta] as { prev: number; curr: number; change: number } | undefined
-            if (!el || typeof el !== "object" || !("prev" in el)) return null
-            return (
-              <div key={key} className="contents">
-                <span className="text-sm text-gray-700 py-2 border-t first:border-t-0 flex items-center">
-                  {MEDDPICC_LABELS[key]}
-                </span>
-                <div className="flex items-center gap-3 py-2 border-t first:border-t-0 justify-end">
-                  <ScorePip score={el.prev} />
-                  <span className="text-gray-300 text-xs">to</span>
-                  <ScorePip score={el.curr} />
-                  <span className="w-14 text-right">
-                    <ChangeChip change={el.change} />
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
@@ -194,43 +93,169 @@ function MeddpiccGridCard({ meddpicc }: { meddpicc: MeddpiccScore }) {
 
 // ─── Risk card ────────────────────────────────────────────────────────────────
 
-function riskScoreColor(score: number) {
-  if (score >= 60) return "bg-red-100 text-red-600"
-  if (score >= 30) return "bg-amber-100 text-amber-700"
-  return "bg-[#1ED760]/15 text-[#0A6630]"
+// ─── Score history table ─────────────────────────────────────────────────────
+
+function stageColumnLabel(brief: Brief, allBriefs: Brief[]): string {
+  if (brief.stage === "prep") return "Prep"
+  if (brief.stage === "post_call") return "Post-call"
+  if (brief.stage === "pov") {
+    const povBriefs = allBriefs.filter((b) => b.stage === "pov")
+    const idx = povBriefs.findIndex((b) => b.id === brief.id)
+    const labels = ["POV: Setup", "POV: Check-in", "POV: Review"]
+    return labels[idx] ?? `POV: Call ${idx + 1}`
+  }
+  const veBriefs = allBriefs.filter((b) => b.stage === "value_engineering")
+  const idx = veBriefs.findIndex((b) => b.id === brief.id)
+  return `VE: Workshop ${idx + 1}`
 }
 
-function RiskCard({ risks }: { risks: RiskItem[] }) {
-  if (!risks.length) return null
-  const sorted = [...risks].sort((a, b) => {
-    const order = { high: 0, medium: 1, low: 2 }
-    return order[a.severity] - order[b.severity]
-  })
-  const riskScore = computeRiskScore(risks)
+function ScoreHistoryTable({ briefs }: { briefs: Brief[] }) {
+  const [riskExplainerOpen, setRiskExplainerOpen] = useState(false)
+  const scored = briefs.filter((b) => b.meddpicc)
+  if (!scored.length) return null
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Risk areas</CardTitle>
-          <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${riskScoreColor(riskScore)}`}
-          >
-            Risk score: {riskScore}/100
-          </span>
-        </div>
+        <CardTitle>Score history</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {sorted.map((risk, i) => (
-          <div key={i} className="space-y-1">
-            <div className="flex items-start gap-2">
-              <SeverityBadge severity={risk.severity} />
-              <p className="text-sm font-medium text-gray-800 leading-snug">{risk.risk}</p>
-            </div>
-            {risk.evidence && risk.evidence !== "none" && (
-              <p className="text-xs text-gray-500 pl-1">
-                &ldquo;{risk.evidence}&rdquo;
-              </p>
-            )}
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr>
+                <th className="text-left text-xs font-medium text-gray-500 pb-2 pr-3 sticky left-0 bg-card">
+                  Stage
+                </th>
+                {scored.map((b) => (
+                  <th
+                    key={b.id}
+                    className="text-right text-xs font-medium text-gray-500 pb-2 pl-4 whitespace-nowrap align-bottom"
+                  >
+                    <div>{stageColumnLabel(b, briefs)}</div>
+                    <div className="text-gray-400 font-normal">
+                      {new Date(b.created_at).toLocaleDateString("en-GB")}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t">
+                <td className="py-2 pr-3 text-gray-700 sticky left-0 bg-card whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => setRiskExplainerOpen((v) => !v)}
+                    className="flex items-center gap-1 hover:text-gray-900"
+                  >
+                    Risk score
+                    <span className="text-gray-400">(?)</span>
+                  </button>
+                </td>
+                {scored.map((b) => {
+                  const rs = computeRiskScore(b.risks ?? [])
+                  return (
+                    <td key={b.id} className="py-2 pl-4 text-right">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${riskScoreColor(rs)}`}
+                      >
+                        {rs}
+                      </span>
+                    </td>
+                  )
+                })}
+              </tr>
+              {riskExplainerOpen && (
+                <tr>
+                  <td colSpan={scored.length + 1} className="pb-3 pt-1 text-xs text-gray-500">
+                    Weighted sum of currently open risks (high = 3, medium = 2, low = 1) as a
+                    percentage of the maximum possible (5 high-severity risks = 15). Only risks
+                    still present in the latest call count -- a risk that&apos;s resolved or
+                    contradicted by a later transcript drops off and pulls the score down; a new or
+                    upgraded risk pushes it up.
+                  </td>
+                </tr>
+              )}
+              <tr className="border-t">
+                <td className="py-2 pr-3 font-medium text-gray-800 sticky left-0 bg-card whitespace-nowrap">
+                  Overall
+                </td>
+                {scored.map((b) => {
+                  const display = toDisplayScore(b.meddpicc.overall_score)
+                  return (
+                    <td
+                      key={b.id}
+                      className={`py-2 pl-4 text-right font-semibold ${b.meddpicc.overall_score >= 16 ? "text-[#1ED760]" : b.meddpicc.overall_score >= 8 ? "text-amber-500" : "text-red-500"}`}
+                    >
+                      {display}
+                    </td>
+                  )
+                })}
+              </tr>
+              {MEDDPICC_ELEMENTS.map((key) => (
+                <tr key={key} className="border-t">
+                  <td className="py-2 pr-3 text-gray-700 sticky left-0 bg-card whitespace-nowrap">
+                    {MEDDPICC_LABELS[key]}
+                  </td>
+                  {scored.map((b) => {
+                    const el = b.meddpicc[key as keyof MeddpiccScore] as { score: number }
+                    return (
+                      <td key={b.id} className="py-2 pl-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <ScorePip score={el.score} />
+                          <span className="text-gray-500 w-3 text-right">{el.score}</span>
+                        </div>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Managed risks card ───────────────────────────────────────────────────────
+
+function computeManagedRisks(briefs: Brief[]): { key: string; risk: string; lastSeenLabel: string }[] {
+  const scored = briefs.filter((b) => b.risks && b.risks.length > 0)
+  if (scored.length < 2) return []
+  const latest = scored[scored.length - 1]
+  const latestIdentities = new Set((latest.risks ?? []).map((r) => r.key ?? r.risk))
+
+  const lastSeen = new Map<string, { risk: string; briefIndex: number }>()
+  for (let i = 0; i < scored.length - 1; i++) {
+    for (const r of scored[i].risks ?? []) {
+      lastSeen.set(r.key ?? r.risk, { risk: r.risk, briefIndex: i })
+    }
+  }
+
+  return [...lastSeen.entries()]
+    .filter(([identity]) => !latestIdentities.has(identity))
+    .map(([identity, info]) => ({
+      key: identity,
+      risk: info.risk,
+      lastSeenLabel: stageColumnLabel(scored[info.briefIndex], briefs),
+    }))
+}
+
+function ManagedRisksCard({ briefs }: { briefs: Brief[] }) {
+  const managed = computeManagedRisks(briefs)
+  if (!managed.length) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Resolved risks</CardTitle>
+        <CardDescription>No longer flagged as of the latest call.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {managed.map((r) => (
+          <div key={r.key}>
+            <p className="text-sm text-gray-500 line-through">{r.risk}</p>
+            <p className="text-xs text-gray-400">Last flagged at {r.lastSeenLabel}</p>
           </div>
         ))}
       </CardContent>
@@ -617,15 +642,13 @@ function DealProgressBar({ stage }: { stage: Deal["stage"] }) {
 
 const POV_STAGES = ["Setup", "Check-in", "Final review"]
 
-function PovStageCard({ dealId, povBriefCount }: { dealId: string; povBriefCount: number }) {
-  const nextLabel =
-    povBriefCount === 1
-      ? "Log check-in call"
-      : povBriefCount === 2
-      ? "Log final review"
-      : null
-  const nextCallType = povBriefCount === 1 ? "checkin" : povBriefCount === 2 ? "review" : null
+function nextPovCall(povBriefCount: number): { label: string; callType: string } | null {
+  if (povBriefCount === 1) return { label: "Log check-in call", callType: "checkin" }
+  if (povBriefCount === 2) return { label: "Log final review", callType: "review" }
+  return null
+}
 
+function PovStageCard({ povBriefCount }: { povBriefCount: number }) {
   return (
     <Card>
       <CardHeader>
@@ -675,15 +698,6 @@ function PovStageCard({ dealId, povBriefCount }: { dealId: string; povBriefCount
             return items
           })}
         </div>
-
-        {nextLabel && (
-          <Link
-            href={`/deal/${dealId}/pov/new${nextCallType ? `?call_type=${nextCallType}` : ""}`}
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-          >
-            {nextLabel}
-          </Link>
-        )}
       </CardContent>
     </Card>
   )
@@ -840,6 +854,34 @@ function StakeholdersCard({
   const [newName, setNewName] = useState("")
   const [newRole, setNewRole] = useState("")
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editRole, setEditRole] = useState("")
+
+  function startEdit(s: DealStakeholder) {
+    setEditingId(s.id)
+    setEditName(s.name)
+    setEditRole(s.role ?? "")
+  }
+
+  async function saveEdit(id: string) {
+    if (!editName.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/stakeholders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName, role: editRole || null }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setStakeholders((prev) => prev.map((s) => (s.id === id ? data.stakeholder : s)))
+        setEditingId(null)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function addStakeholder() {
     if (!newName.trim()) return
@@ -891,22 +933,59 @@ function StakeholdersCard({
         <CardTitle>Stakeholders</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {stakeholders.map((s) => (
-          <div key={s.id} className="flex items-center justify-between text-sm">
-            <div>
-              <span className="font-medium">{s.name}</span>
-              {s.role && <span className="text-gray-500"> -- {s.role}</span>}
+        {stakeholders.map((s) =>
+          editingId === s.id ? (
+            <div key={s.id} className="flex items-center gap-2 text-sm">
+              <Input
+                placeholder="Name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="max-w-[160px]"
+              />
+              <Input
+                placeholder="Role (optional)"
+                value={editRole}
+                onChange={(e) => setEditRole(e.target.value)}
+                className="max-w-[180px]"
+              />
+              <Button size="sm" onClick={() => saveEdit(s.id)} disabled={saving || !editName.trim()}>
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                Cancel
+              </Button>
             </div>
-            <button
-              type="button"
-              onClick={() => removeStakeholder(s.id)}
-              className="text-xs text-gray-400 hover:text-red-500"
-              aria-label={`Remove ${s.name}`}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
+          ) : (
+            <div key={s.id} className="flex items-center justify-between text-sm">
+              <button
+                type="button"
+                onClick={() => startEdit(s)}
+                className="text-left hover:text-gray-900"
+                aria-label={`Edit ${s.name}`}
+              >
+                <span className="font-medium">{s.name}</span>
+                {s.role && <span className="text-gray-500"> -- {s.role}</span>}
+              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => startEdit(s)}
+                  className="text-xs text-gray-400 hover:text-gray-700"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeStakeholder(s.id)}
+                  className="text-xs text-gray-400 hover:text-red-500"
+                  aria-label={`Remove ${s.name}`}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          )
+        )}
 
         {adding ? (
           <div className="flex items-center gap-2 pt-2 border-t">
@@ -1313,6 +1392,7 @@ export function DealView({
   const latestPovBrief = povBriefs.length > 0 ? povBriefs[povBriefs.length - 1] : null
   const hasPostCall = !!postCallBrief
   const hasPov = povBriefCount > 0
+  const nextPov = nextPovCall(povBriefCount)
 
   // VE computed values
   const veBriefs = briefs.filter((b) => b.stage === "value_engineering")
@@ -1365,6 +1445,7 @@ export function DealView({
 
   const m = latestBrief?.meddpicc ?? null
   const displayScore = m ? toDisplayScore(m.overall_score) : null
+  const headerRiskScore = computeRiskScore(latestBrief?.risks ?? [])
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -1382,17 +1463,30 @@ export function DealView({
             Started {new Date(deal.created_at).toLocaleDateString("en-GB")}
           </p>
         </div>
-        {displayScore !== null && m && (
-          <div className="text-right">
-            <div
-              className={`text-3xl font-bold ${m.overall_score >= 16 ? "text-[#1ED760]" : m.overall_score >= 8 ? "text-amber-500" : "text-red-500"}`}
-            >
-              {displayScore}
-              <span className="text-lg font-normal text-gray-400">/100</span>
+        <div className="flex items-start gap-6">
+          {displayScore !== null && m && (
+            <div className="text-right">
+              <div
+                className={`text-3xl font-bold ${m.overall_score >= 16 ? "text-[#1ED760]" : m.overall_score >= 8 ? "text-amber-500" : "text-red-500"}`}
+              >
+                {displayScore}
+                <span className="text-lg font-normal text-gray-400">/100</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">MEDDPICC score</p>
             </div>
-            <p className="text-xs text-gray-500 mt-0.5">MEDDPICC score</p>
-          </div>
-        )}
+          )}
+          {latestBrief?.risks && latestBrief.risks.length > 0 && (
+            <div className="text-right">
+              <div
+                className={`text-3xl font-bold ${headerRiskScore >= 60 ? "text-red-500" : headerRiskScore >= 30 ? "text-amber-500" : "text-[#1ED760]"}`}
+              >
+                {headerRiskScore}
+                <span className="text-lg font-normal text-gray-400">/100</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">Risk score</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Lifecycle progress */}
@@ -1431,17 +1525,27 @@ export function DealView({
         </Card>
       )}
 
-      {/* VE CTA */}
+      {/* POV + VE call CTAs, side by side */}
       {hasPov && !hasVe && (
         <Card className="border-dashed">
           <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
-            <p className="text-sm text-gray-600">Ready to run a Value Engineering workshop?</p>
-            <Link
-              href={`/deal/${deal.id}/value-engineering/new`}
-              className={cn(buttonVariants())}
-            >
-              Log VE workshop
-            </Link>
+            <p className="text-sm text-gray-600">Log the next call for this deal</p>
+            <div className="flex items-center gap-3">
+              {nextPov && (
+                <Link
+                  href={`/deal/${deal.id}/pov/new?call_type=${nextPov.callType}`}
+                  className={cn(buttonVariants({ variant: "outline" }))}
+                >
+                  {nextPov.label}
+                </Link>
+              )}
+              <Link
+                href={`/deal/${deal.id}/value-engineering/new`}
+                className={cn(buttonVariants())}
+              >
+                Log VE workshop
+              </Link>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1457,7 +1561,7 @@ export function DealView({
 
         <TabsContent value="overview" className="space-y-6 mt-4">
           {latestBrief?.meddpicc && <MeddpiccGridCard meddpicc={latestBrief.meddpicc} />}
-          {latestBrief?.delta && <DeltaCard delta={latestBrief.delta} />}
+          <ScoreHistoryTable briefs={briefs} />
           {latestBrief?.meddpicc && (
             <QuestionsCard
               suggested={latestBrief.meddpicc.suggested_questions}
@@ -1501,16 +1605,17 @@ export function DealView({
 
         <TabsContent value="risks" className="space-y-6 mt-4">
           {latestBrief?.risks && latestBrief.risks.length > 0 ? (
-            <RiskCard risks={latestBrief.risks} />
+            <RiskCard risks={latestBrief.risks} riskScore={headerRiskScore} />
           ) : (
             <p className="text-sm text-gray-400 py-4">No risks identified yet.</p>
           )}
+          <ManagedRisksCard briefs={briefs} />
         </TabsContent>
 
         <TabsContent value="pov" className="space-y-6 mt-4">
           {hasPov ? (
             <>
-              <PovStageCard dealId={deal.id} povBriefCount={povBriefCount} />
+              <PovStageCard povBriefCount={povBriefCount} />
               {latestPovBrief && deal.success_criteria?.length > 0 && (
                 <PovProgressCard
                   dealId={deal.id}

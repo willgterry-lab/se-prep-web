@@ -8,44 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { CopyButton } from "@/components/copy-button"
 import { DeleteBriefButton } from "@/components/delete-brief-button"
+import { computeRiskScore } from "@/lib/risk-score"
 import { cn } from "@/lib/utils"
-import type { Brief, MeddpiccScore, MeddpiccDelta, RiskItem, MatchedCaseStudy, SuggestedQuestions } from "@/types"
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const MEDDPICC_LABELS: Record<
-  keyof Omit<MeddpiccScore, "overall_score" | "summary" | "suggested_questions" | "answered_questions">,
-  string
-> = {
-  metrics: "Metrics",
-  economic_buyer: "Economic Buyer",
-  decision_criteria: "Decision Criteria",
-  decision_process: "Decision Process",
-  paper_process: "Paper Process",
-  identify_pain: "Identify Pain",
-  champion: "Champion",
-  competition: "Competition",
-}
+import {
+  MEDDPICC_LABELS,
+  MEDDPICC_ELEMENTS,
+  toDisplayScore,
+  ScorePip,
+  ChangeChip,
+  RiskCard,
+} from "@/components/score-display"
+import type { Brief, MeddpiccScore, MeddpiccDelta, MatchedCaseStudy, SuggestedQuestions } from "@/types"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function toDisplayScore(raw: number) {
-  return Math.round((raw / 24) * 100)
-}
-
-function ScorePip({ score }: { score: number }) {
-  const colors = ["bg-gray-200", "bg-red-400", "bg-amber-400", "bg-[#1ED760]"]
-  return (
-    <div className="flex gap-1">
-      {[1, 2, 3].map((i) => (
-        <span
-          key={i}
-          className={`w-2 h-2 rounded-full ${i <= score ? colors[score] : "bg-gray-200"}`}
-        />
-      ))}
-    </div>
-  )
-}
 
 function meddpiccToText(m: MeddpiccScore): string {
   const keys = Object.keys(MEDDPICC_LABELS) as Array<
@@ -134,18 +109,6 @@ function buildMailtoHref(rawEmail: string, selected: MatchedCaseStudy[]): string
 
 // ─── Delta card ───────────────────────────────────────────────────────────────
 
-const MEDDPICC_ELEMENTS = Object.keys(MEDDPICC_LABELS) as Array<keyof typeof MEDDPICC_LABELS>
-
-function ChangeChip({ change }: { change: number }) {
-  if (change === 0) return <span className="text-xs text-gray-400">no change</span>
-  const positive = change > 0
-  return (
-    <span className={`text-xs font-semibold ${positive ? "text-[#1ED760]" : "text-red-500"}`}>
-      {positive ? "+" : ""}{change}
-    </span>
-  )
-}
-
 function DeltaCard({ delta }: { delta: MeddpiccDelta }) {
   const prevDisplay = Math.round((delta.overall_prev / 24) * 100)
   const currDisplay = Math.round((delta.overall_curr / 24) * 100)
@@ -180,46 +143,6 @@ function DeltaCard({ delta }: { delta: MeddpiccDelta }) {
             </div>
           )
         })}
-      </CardContent>
-    </Card>
-  )
-}
-
-// ─── Risk card ────────────────────────────────────────────────────────────────
-
-function SeverityBadge({ severity }: { severity: RiskItem["severity"] }) {
-  const classes = {
-    high: "bg-red-100 text-red-700 border-red-200",
-    medium: "bg-amber-100 text-amber-700 border-amber-200",
-    low: "bg-gray-100 text-gray-600 border-gray-200",
-  }
-  return (
-    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${classes[severity]}`}>
-      {severity}
-    </span>
-  )
-}
-
-function RiskCard({ risks }: { risks: RiskItem[] }) {
-  const sorted = [...risks].sort((a, b) => {
-    const order = { high: 0, medium: 1, low: 2 }
-    return order[a.severity] - order[b.severity]
-  })
-  return (
-    <Card>
-      <CardHeader><CardTitle>Risk areas</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
-        {sorted.map((risk, i) => (
-          <div key={i} className="space-y-1">
-            <div className="flex items-start gap-2">
-              <SeverityBadge severity={risk.severity} />
-              <p className="text-sm font-medium text-gray-800 leading-snug">{risk.risk}</p>
-            </div>
-            {risk.evidence && risk.evidence !== "none" && (
-              <p className="text-xs text-gray-500 pl-1">&ldquo;{risk.evidence}&rdquo;</p>
-            )}
-          </div>
-        ))}
       </CardContent>
     </Card>
   )
@@ -336,7 +259,9 @@ export function BriefView({ brief, continueHref }: { brief: Brief; continueHref?
       {brief.delta && <DeltaCard delta={brief.delta} />}
 
       {/* Risk areas (post-call briefs only) */}
-      {brief.risks && brief.risks.length > 0 && <RiskCard risks={brief.risks} />}
+      {brief.risks && brief.risks.length > 0 && (
+        <RiskCard risks={brief.risks} riskScore={computeRiskScore(brief.risks)} />
+      )}
 
       {m && (
         <>
@@ -371,6 +296,7 @@ export function BriefView({ brief, continueHref }: { brief: Brief; continueHref?
                       </span>
                       <div className="flex items-center gap-2">
                         <ScorePip score={element.score} />
+                        <span className="text-xs text-gray-400 w-8 text-right">{element.score}/3</span>
                         <CopyButton text={elementToText(MEDDPICC_LABELS[key], element)} />
                       </div>
                     </div>
@@ -546,10 +472,10 @@ export function BriefView({ brief, continueHref }: { brief: Brief; continueHref?
       {/* Footer actions */}
       <div className="pb-8 flex items-center justify-between">
         <Link
-          href="/dashboard"
+          href={brief.deal_id ? `/deal/${brief.deal_id}` : "/dashboard"}
           className={cn(buttonVariants({ variant: "outline" }))}
         >
-          ← Back to dashboard
+          ← Back to deal
         </Link>
         {continueHref ? (
           <Link href={continueHref} className={cn(buttonVariants())}>

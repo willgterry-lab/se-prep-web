@@ -22,7 +22,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <span className="text-[#1ED760]">SE</span> Agent
           </Link>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-white/50">{user.email}</span>
+            <Link href="/settings" className="text-sm text-white/50 hover:text-white transition-colors">
+              {user.email}
+            </Link>
             <form action={signOut}>
               <button
                 type="submit"

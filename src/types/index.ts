@@ -70,9 +70,11 @@ export interface MeddpiccDelta {
 }
 
 export interface RiskItem {
+  key?: string
   risk: string
   evidence: string
   severity: "low" | "medium" | "high"
+  suggested_action?: string
 }
 
 export interface NextAction {

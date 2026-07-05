@@ -368,10 +368,10 @@ export async function identifyRisks(
   const priorSection = priorRisks?.length
     ? `
 
-Risks previously identified on this deal (from an earlier call):
-${priorRisks.map((r) => `- [${r.severity}] ${r.risk} -- evidence: "${r.evidence}"`).join("\n")}
+Risks previously identified on this deal (from an earlier call), with their stable key:
+${priorRisks.map((r) => `- [${r.key ?? "unknown"}] [${r.severity}] ${r.risk} -- evidence: "${r.evidence}"`).join("\n")}
 
-Rule: carry a previous risk forward (possibly re-worded or re-severity-rated) unless THIS transcript resolves or contradicts it -- e.g. a stakeholder previously described as unengaged is now actively participating, or a competitor concern was directly addressed. Do not silently drop a still-relevant risk just because it was not re-mentioned.`
+Rule: carry a previous risk forward (possibly re-worded or re-severity-rated) unless THIS transcript resolves or contradicts it -- e.g. a stakeholder previously described as unengaged is now actively participating, or a competitor concern was directly addressed. Do not silently drop a still-relevant risk just because it was not re-mentioned. When you carry a risk forward, reuse its exact same "key" value even if you reword the risk text -- this is how the product tracks a risk across calls. Only invent a new key for a genuinely new risk.`
     : ""
 
   const message = await anthropic.messages.create({
@@ -412,9 +412,11 @@ Common risk patterns (only flag if evidence in transcript supports them):
 Return ONLY valid JSON array:
 [
   {
+    "key": "short-kebab-case-slug identifying this risk, e.g. \"single-threaded\" or \"eb-not-engaged\"",
     "risk": "one sentence describing the risk",
     "evidence": "verbatim quote from the transcript, or description of what was absent",
-    "severity": "low" | "medium" | "high"
+    "severity": "low" | "medium" | "high",
+    "suggested_action": "one concrete next step the SC could take to mitigate this specific risk"
   }
 ]
 

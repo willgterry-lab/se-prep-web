@@ -1,6 +1,102 @@
 # Session log
 
-## Current state (2026-07-04)
+## Current state (2026-07-05)
+
+### Completed this session
+Implemented the second punch list from `~/Downloads/Notes on SE Agent 05_07_26.pdf` (live-test
+feedback dated 2026-07-05, on top of the 2026-07-04 batch which was committed and pushed at the
+start of this session, `843a4e6`). No schema migration this time -- everything shipped as a
+shape change on existing jsonb columns (`risks`) or new UI over existing data. Full
+`npm run build` passes; `npx tsc --noEmit` clean; `npx eslint src/` shows the same 7
+problems (1 error, 6 warnings) as `git stash` back to the pre-session commit -- confirmed
+byte-for-byte via before/after diff, nothing new introduced.
+
+**Phase A -- nav fixes + de-duplication:**
+- `brief-view.tsx` footer: "Back to dashboard" -> "Back to deal" (links to `/deal/${brief.deal_id}`,
+  falls back to `/dashboard` if `deal_id` is somehow null).
+- `brief-view.tsx`'s MEDDPICC breakdown card was missing the numeric `X/3` score next to each
+  element's pip (deal-view's equivalent already had it) -- added it back.
+- That drift is exactly why this class of bug happens: `ScorePip`, `ChangeChip`, `SeverityBadge`,
+  `MEDDPICC_LABELS`, `MEDDPICC_ELEMENTS`, `toDisplayScore`, `riskScoreColor`, and `RiskCard` were
+  copy-pasted verbatim between `brief-view.tsx` and `deal-view.tsx`. Extracted all of it into
+  `src/components/score-display.tsx`, imported by both. `RiskCard` there now also takes an
+  optional `riskScore` prop and renders `suggested_action` (see Phase C).
+
+**Phase B -- score history table + risk score in header:**
+- Replaced `DeltaCard` (deal screen's Overview tab -- only ever compared the latest brief to the
+  one before it) with a new `ScoreHistoryTable`: one column per brief across the *whole* deal,
+  labelled by stage ("Prep", "Post-call", "POV: Setup", "POV: Check-in", "POV: Review", "VE:
+  Workshop 1", ...) since `Brief.stage` itself doesn't distinguish POV/VE sub-stages -- labelled by
+  ordinal position among same-stage briefs, same convention `PovStageCard` already used. Rows:
+  Risk score, Overall, then the 8 MEDDPICC elements, true grid/table alignment throughout.
+  `brief-view.tsx` keeps its own simple prev/curr `DeltaCard` (that page only ever has one brief in
+  scope, not the deal's full history -- "what changed on this call" is still a legitimate, separate
+  view from the deal-wide trend).
+- Deal header now shows Risk score next to MEDDPICC score (previously only visible inside the Risks
+  tab) -- same big-number treatment, colour-coded the same way.
+- Added a click-to-expand "(?)" next to "Risk score" in the history table explaining the actual
+  weighting (high=3/medium=2/low=1, ÷ max of 15) and that only *currently open* risks count -- this
+  is what answers "why did the risk score move" (e.g. the reported 80->87): a risk resolved by a
+  later call pulls the score down, a new/upgraded one pushes it up, and the table now shows every
+  stage's number so that's visible in context instead of just two data points.
+
+**Phase C -- risk key, suggested action, managed risks:**
+- `RiskItem` type: added optional `key` (short stable slug, e.g. `"single-threaded"`) and
+  `suggested_action`. No migration -- `briefs.risks` is jsonb, this is a shape change only; both
+  fields are optional so old rows without them still render fine.
+- `identifyRisks` prompt now asks for both fields, and the existing "carry a risk forward unless
+  contradicted" instruction now also says to reuse the same `key` across calls even if the risk
+  text is reworded -- best-effort (same caveat as the cumulative-scoring carry-forward from last
+  session), but it's what makes the next item possible without a new DB column.
+- New "Resolved risks" card in the Risks tab: diffs `briefs` client-side by risk `key` (falling back
+  to the risk text itself for old briefs with no `key`) -- any risk seen in an earlier brief but
+  absent from the latest one is shown there with the stage it was last flagged at. No new fetch.
+- `RiskCard` now renders `suggested_action` under each risk's evidence quote.
+
+**Phase D -- stakeholder inline edit:**
+- `StakeholdersCard` only supported add/remove before. The PATCH route already accepted
+  `{ name, role }` and needed no changes -- added inline edit (click a stakeholder row -> two
+  inputs + Save/Cancel, same pattern as the existing "add stakeholder" form) so a first-name-only
+  AI extraction can be filled in with a surname and job title.
+
+**Phase E -- POV/VE CTAs promoted above the tab:**
+- The only stage-progress CTA visible above the tabs used to be VE ("Log VE workshop"); the next
+  POV call button ("Log check-in call" / "Log final review") only lived inside `PovStageCard`,
+  itself inside the POV tab -- reported as "hidden under the POV tab, bad UX". Extracted the
+  label/call-type logic into `nextPovCall()`, added both buttons side by side in a new top-level CTA
+  card, and removed the now-redundant button from inside `PovStageCard` (kept as a pure stepper) so
+  the same action doesn't live in two places.
+
+**Phase F -- dashboard/settings split:**
+- New `/settings` page: Product card + Danger Zone moved here verbatim from the dashboard.
+- Header email (`(app)/layout.tsx`) is now a link to `/settings` instead of inert text.
+- Dashboard is now deals-only, per "focus should be the currently live deals". Each deal card also
+  shows a risk-score badge next to the existing MEDDPICC badge (added `risks` to the dashboard's
+  briefs `select(...)`, it previously only fetched `meddpicc`).
+
+### Not changed this pass (deliberate)
+- **Choco pricing indicator for VE/ROI**: the user flagged this needs a real rate card and a
+  "deal size" field before it can be built without inventing numbers (violates the project's "no
+  invented metrics" rule) -- asked the user how to source it via `AskUserQuestion`, they chose to
+  defer the whole item rather than pick a stopgap. Needs a follow-up conversation before any code.
+- **"No change in MEDDPICC at POV check-in stage"**: read as an observation about one specific test
+  deal rather than a reproducible bug (same treatment as the unreproduced streaming complaint from
+  the 2026-07-04 session) -- not touched speculatively. The new score history table should make it
+  much easier for the user to tell, next live test, whether this is an actual scoring problem or
+  just a quiet call.
+
+### Outstanding
+- Live UI click-through still needed -- Chrome browser extension was not connected in this
+  environment either session running. Dev server left running at `localhost:3000`.
+- Everything in this session is uncommitted as of now -- working tree has all changes from both
+  this session and needs a commit/push when the user is ready (previous session's work, `843a4e6`,
+  is already pushed).
+- seagent.co.uk DNS still not pointed to Vercel (carried over).
+- Privacy page still says "SE Prep" -- needs rename pass (carried over).
+- Choco pricing/deal-size (see above) -- needs a decision from the user on data source before any
+  build work.
+
+## Prior state (2026-07-04)
 
 ### Completed this session
 Implemented the full punch list from `~/Downloads/Notes on SE Agent .pdf` (live-test feedback dated 2026-07-03), across 6 phases. Schema migration v5 added (stakeholders). Full `npm run build` passes; typecheck and lint clean (only pre-existing warnings remain, verified via `git stash` diff before/after).
