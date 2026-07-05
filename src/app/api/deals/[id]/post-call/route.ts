@@ -8,6 +8,8 @@ import {
   draftPostCallEmail,
   generateNextActions,
   extractStakeholders,
+  detectCompletedTasks,
+  extractCallDate,
 } from "@/lib/analysis"
 import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, MeddpiccScore, Brief } from "@/types"
@@ -27,7 +29,7 @@ export async function POST(
 
   const scName = (user.user_metadata?.full_name as string | undefined) ?? ""
 
-  const { transcript } = await req.json()
+  const { transcript, call_date } = await req.json()
 
   const [{ data: deal }, { data: ctx }] = await Promise.all([
     supabase.from("deals").select("*").eq("id", dealId).eq("user_id", user.id).single(),
@@ -52,6 +54,12 @@ export async function POST(
 
   const prevBrief = prevBriefRow as Pick<Brief, "meddpicc" | "risks"> | null
 
+  const { data: openTasks } = await supabase
+    .from("deal_tasks")
+    .select("id, description")
+    .eq("deal_id", dealId)
+    .eq("status", "open")
+
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (event: object) =>
@@ -71,7 +79,7 @@ export async function POST(
 
         const today = new Date().toISOString().split("T")[0]
 
-        const [risks, questionsResult, email, actions, stakeholders] = await Promise.all([
+        const [risks, questionsResult, email, actions, stakeholders, completedCandidates, resolvedCallDate] = await Promise.all([
           identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
             emit({ type: "risks", data: r })
             return r
@@ -101,6 +109,8 @@ export async function POST(
             return r
           }),
           extractStakeholders(transcript, deal.prospect_company),
+          detectCompletedTasks(openTasks ?? [], transcript),
+          call_date ? Promise.resolve(call_date as string) : extractCallDate(transcript),
         ])
 
         const meddpiccFull: MeddpiccScore = {
@@ -123,6 +133,7 @@ export async function POST(
             follow_up_email: email,
             delta,
             risks,
+            call_date: resolvedCallDate,
           })
           .select("id")
           .single()
@@ -134,6 +145,17 @@ export async function POST(
         }
 
         await upsertStakeholders(supabase, dealId, brief.id, stakeholders)
+
+        // Flag tasks this call's transcript confirms are already done -- surfaced
+        // to the SC to confirm, never auto-completed.
+        const openTaskIds = new Set((openTasks ?? []).map((t) => t.id))
+        for (const candidate of completedCandidates) {
+          if (!openTaskIds.has(candidate.task_id)) continue
+          await supabase
+            .from("deal_tasks")
+            .update({ suggested_done_evidence: candidate.evidence })
+            .eq("id", candidate.task_id)
+        }
 
         // Write next actions to deal_tasks.
         if (actions.length > 0) {

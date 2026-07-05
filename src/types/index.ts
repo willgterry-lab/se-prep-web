@@ -85,6 +85,8 @@ export interface NextAction {
 
 export type PovCallType = "setup" | "checkin" | "review"
 
+export type VeBaselineCategory = "time" | "cost" | "error_rate" | "kpi" | "context"
+
 export interface VeBaselineInput {
   key: string
   label: string
@@ -93,6 +95,18 @@ export interface VeBaselineInput {
   unit: string
   currency?: string | null
   evidence: string
+  // "context" baselines (headcount, order/transaction volume) describe scale, not
+  // a pain to improve -- they're kept for reference and for maths elsewhere (e.g.
+  // converting an order count into hours via a time-per-order baseline) but are
+  // never slider-eligible. Legacy rows extracted before this field existed will
+  // have it undefined; treat that as slider-eligible (old behaviour) rather than
+  // silently hiding data the SC could already see.
+  category?: VeBaselineCategory
+  // Only meaningful for slider-eligible categories. "increase" for baselines
+  // where more is the improvement (e.g. average order value); "decrease" for
+  // ones where less is the improvement (time, cost, error rate). Undefined/legacy
+  // rows default to "decrease" in the UI, matching the old slider's only framing.
+  direction?: "increase" | "decrease"
 }
 
 export type VeSliderInputs = Record<string, number>
@@ -158,6 +172,11 @@ export interface Brief {
   pov_assessment: PovAssessment[]
   recording_url: string | null
   ve_baseline_inputs: VeBaselineInput[]
+  // The actual date the call happened (SC-set or best-effort extracted from the
+  // transcript), distinct from created_at (when the brief was logged into the
+  // app). Null on older briefs or when neither source found a date -- fall back
+  // to created_at for display.
+  call_date: string | null
   created_at: string
   updated_at: string
 }
@@ -169,6 +188,10 @@ export interface Deal {
   prospect_company: string
   stage: DealStage
   success_criteria: SuccessCriterion[]
+  // Full count of distinct criteria the AI identified as agreed on the kickoff
+  // call, before narrowing to the 5 stored in success_criteria. Null on deals
+  // created before this field existed, or when it never exceeded 5.
+  success_criteria_total_agreed: number | null
   share_token: string | null
   ve_proposal: VeProposal | null
   ve_slider_inputs: VeSliderInputs | null
@@ -189,6 +212,9 @@ export interface DealTask {
   reminder_at: string | null
   created_at: string
   completed_at: string | null
+  // Set when a later call's transcript indicates this open task is already done.
+  // Surfaced to the SC as a suggestion to confirm -- never auto-completed.
+  suggested_done_evidence: string | null
 }
 
 export interface DealWithBriefs extends Deal {

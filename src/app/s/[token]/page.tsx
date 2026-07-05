@@ -69,11 +69,15 @@ export default async function SalesroomPage({
       .eq("deal_id", deal.id)
       .in("stage", ["prep", "post_call", "pov"])
       .order("created_at", { ascending: true }),
+    // Prospect-facing page: never show SC-internal tasks (coaching notes, internal
+    // admin) or unowned ones. Only tasks explicitly owned by the prospect or joint
+    // between both sides belong here.
     supabaseAdmin
       .from("deal_tasks")
       .select("id, description, owner, reminder_at, status")
       .eq("deal_id", deal.id)
       .eq("status", "open")
+      .in("owner", ["Prospect", "Joint"])
       .order("created_at", { ascending: true }),
   ])
 

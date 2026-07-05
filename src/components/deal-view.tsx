@@ -134,7 +134,7 @@ function ScoreHistoryTable({ briefs }: { briefs: Brief[] }) {
                   >
                     <div>{stageColumnLabel(b, briefs)}</div>
                     <div className="text-gray-400 font-normal">
-                      {new Date(b.created_at).toLocaleDateString("en-GB")}
+                      {new Date(b.call_date ? `${b.call_date}T00:00:00` : b.created_at).toLocaleDateString("en-GB")}
                     </div>
                   </th>
                 ))}
@@ -348,7 +348,11 @@ function TaskList({ dealId, initialTasks }: { dealId: string; initialTasks: Deal
       const next: TaskStatus = current === "open" ? "done" : "open"
       setPending((p) => new Set(p).add(taskId))
       setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: next } : t))
+        prev.map((t) =>
+          t.id === taskId
+            ? { ...t, status: next, suggested_done_evidence: next === "done" ? null : t.suggested_done_evidence }
+            : t
+        )
       )
 
       try {
@@ -383,6 +387,20 @@ function TaskList({ dealId, initialTasks }: { dealId: string; initialTasks: Deal
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reminder_at }),
+      })
+    },
+    [dealId]
+  )
+
+  const dismissSuggestion = useCallback(
+    async (taskId: string) => {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, suggested_done_evidence: null } : t))
+      )
+      await fetch(`/api/deals/${dealId}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dismiss_suggestion: true }),
       })
     },
     [dealId]
@@ -458,6 +476,7 @@ function TaskList({ dealId, initialTasks }: { dealId: string; initialTasks: Deal
                       isPending={pending.has(task.id)}
                       onToggle={toggle}
                       onDateChange={changeDueDate}
+                      onDismissSuggestion={dismissSuggestion}
                     />
                   )
                 })}
@@ -537,13 +556,16 @@ function TaskRow({
   isPending,
   onToggle,
   onDateChange,
+  onDismissSuggestion,
 }: {
   task: DealTask
   overdue: boolean
   isPending: boolean
   onToggle: (id: string, status: TaskStatus) => void
   onDateChange: (id: string, dateValue: string) => void
+  onDismissSuggestion?: (id: string) => void
 }) {
+  const [pickingDate, setPickingDate] = useState(false)
   return (
     <div
       className={`flex items-start gap-3 rounded-md px-2 py-2 transition-colors hover:bg-gray-50 ${isPending ? "opacity-50" : ""}`}
@@ -570,15 +592,46 @@ function TaskRow({
               Overdue
             </span>
           )}
-          {task.status === "open" && (
+          {task.status === "open" && (task.reminder_at || pickingDate ? (
             <input
               type="date"
               value={reminderToDateInputValue(task.reminder_at)}
               onChange={(e) => onDateChange(task.id, e.target.value)}
               className="text-[11px] text-gray-500 border-none bg-transparent px-0 h-5 focus:ring-0 focus:outline-none"
             />
-          )}
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPickingDate(true)}
+              className="text-[11px] text-gray-400 hover:text-gray-600 underline underline-offset-2"
+            >
+              + Set date
+            </button>
+          ))}
         </div>
+        {task.status === "open" && task.suggested_done_evidence && onDismissSuggestion && (
+          <div className="mt-1.5 rounded-md bg-[#F0FDF4] border border-[#1ED760]/20 px-2 py-1.5 space-y-1">
+            <p className="text-xs text-gray-700">
+              A later call suggests this is already done: &ldquo;{task.suggested_done_evidence}&rdquo;
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onToggle(task.id, task.status)}
+                className="text-xs font-medium text-[#0A6630] hover:underline"
+              >
+                Confirm done
+              </button>
+              <button
+                type="button"
+                onClick={() => onDismissSuggestion(task.id)}
+                className="text-xs text-gray-500 hover:underline"
+              >
+                Not yet
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -711,11 +764,13 @@ function PovProgressCard({
   dealId,
   briefId,
   criteria,
+  totalAgreed,
   assessment: initialAssessment,
 }: {
   dealId: string
   briefId: string
   criteria: SuccessCriterion[]
+  totalAgreed: number | null
   assessment: PovAssessment[]
 }) {
   const [assessment, setAssessment] = useState(initialAssessment)
@@ -765,6 +820,12 @@ function PovProgressCard({
             {metCount} of {criteria.length} met
           </span>
         </div>
+        {totalAgreed !== null && totalAgreed > criteria.length && (
+          <CardDescription className="text-amber-700">
+            {totalAgreed} criteria were agreed on the kickoff call -- only the {criteria.length} most
+            specific and measurable are tracked here.
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent className="divide-y">
         {criteria.map((c) => {
@@ -1024,8 +1085,15 @@ function StakeholdersCard({
 
 // ─── Share section ────────────────────────────────────────────────────────────
 
-function ShareSection({ dealId, initialToken }: { dealId: string; initialToken: string | null }) {
-  const [token, setToken] = useState<string | null>(initialToken)
+function ShareSection({
+  dealId,
+  token,
+  onTokenChange,
+}: {
+  dealId: string
+  token: string | null
+  onTokenChange: (token: string | null) => void
+}) {
   const [shareUrl, setShareUrl] = useState("")
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -1044,7 +1112,7 @@ function ShareSection({ dealId, initialToken }: { dealId: string; initialToken: 
         body: JSON.stringify({ action: "generate" }),
       })
       const data = await res.json()
-      if (res.ok) setToken(data.share_token)
+      if (res.ok) onTokenChange(data.share_token)
     } finally {
       setLoading(false)
     }
@@ -1058,7 +1126,7 @@ function ShareSection({ dealId, initialToken }: { dealId: string; initialToken: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "revoke" }),
       })
-      if (res.ok) setToken(null)
+      if (res.ok) onTokenChange(null)
     } finally {
       setLoading(false)
     }
@@ -1144,6 +1212,29 @@ function VeConfidenceBadge({ confidence }: { confidence: VeConfidence }) {
 
 // ─── VE baseline + sliders card ───────────────────────────────────────────────
 
+const CURRENCY_SYMBOLS: Record<string, string> = { GBP: "£", USD: "$", EUR: "€" }
+
+// Some extractions bake the currency code into the unit itself (e.g. "GBP/year")
+// instead of using the separate `currency` field -- handle both, and always apply
+// thousand separators with at most one decimal place (never a bare toFixed(1)).
+function formatBaselineValue(value: number, unit: string, currency?: string | null): string {
+  const rounded = Math.round(value * 10) / 10
+  const numberText = rounded.toLocaleString("en-GB", {
+    minimumFractionDigits: rounded % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 1,
+  })
+
+  const unitMatch = unit.match(/^(GBP|USD|EUR)\s*\/?\s*(.*)$/i)
+  const code = (currency || unitMatch?.[1])?.toUpperCase()
+  const symbol = code ? CURRENCY_SYMBOLS[code] : null
+
+  if (symbol) {
+    if (unitMatch) return `${symbol}${numberText}${unitMatch[2] ? `/${unitMatch[2]}` : ""}`
+    return `${symbol}${numberText}${unit ? ` ${unit}` : ""}`
+  }
+  return `${numberText} ${unit}`
+}
+
 function VeBaselineCard({
   dealId,
   baselines,
@@ -1161,6 +1252,13 @@ function VeBaselineCard({
   generating: boolean
   hasProposal: boolean
 }) {
+  // "context" baselines (headcount, order volume) describe scale, not something
+  // to slide an "improvement" assumption onto -- undefined category (legacy data
+  // extracted before this field existed) is treated as slider-eligible, same as
+  // the old behaviour, rather than silently hiding data the SC could already see.
+  const sliderEligible = baselines.filter((b) => b.category !== "context")
+  const contextOnly = baselines.filter((b) => b.category === "context")
+
   return (
     <Card>
       <CardHeader>
@@ -1182,9 +1280,10 @@ function VeBaselineCard({
               Slider values are your assumptions, not evidenced outcomes. They will be clearly labelled as such in the value proposal.
             </p>
             <div className="divide-y">
-              {baselines.map((b) => {
+              {sliderEligible.map((b) => {
                 const pct = sliders[b.key] ?? 40
-                const improved = (b.numeric_value * pct / 100).toFixed(1)
+                const isIncrease = b.direction === "increase"
+                const improved = formatBaselineValue((b.numeric_value * pct) / 100, b.unit, b.currency)
                 return (
                   <div key={b.key} className="py-4 first:pt-0 last:pb-0 space-y-2">
                     <div className="flex items-start justify-between gap-3">
@@ -1196,7 +1295,7 @@ function VeBaselineCard({
                         </p>
                       </div>
                       <span className="text-sm font-semibold text-[#1ED760] shrink-0">
-                        {pct}% improvement
+                        {pct}% {isIncrease ? "increase" : "improvement"}
                       </span>
                     </div>
                     <input
@@ -1209,7 +1308,7 @@ function VeBaselineCard({
                       className="w-full accent-[#1ED760]"
                     />
                     <p className="text-xs text-gray-400">
-                      {improved} {b.unit} improvement estimated
+                      {improved} {isIncrease ? "increase" : "improvement"} estimated
                     </p>
                     {b.evidence && (
                       <p className="text-xs text-gray-400 italic border-l-2 border-gray-200 pl-2">
@@ -1220,6 +1319,18 @@ function VeBaselineCard({
                 )
               })}
             </div>
+            {contextOnly.length > 0 && (
+              <div className="rounded-md bg-gray-50 border px-3 py-2 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  Context figures (scale, not an improvement assumption)
+                </p>
+                {contextOnly.map((b) => (
+                  <p key={b.key} className="text-xs text-gray-500">
+                    {b.label}: {b.raw_value}
+                  </p>
+                ))}
+              </div>
+            )}
             <Button onClick={onGenerate} disabled={generating} className="w-full">
               {generating
                 ? "Generating..."
@@ -1310,10 +1421,12 @@ function VePublishSection({
   dealId,
   initialPublished,
   hasProposal,
+  onTokenChange,
 }: {
   dealId: string
   initialPublished: boolean
   hasProposal: boolean
+  onTokenChange: (token: string) => void
 }) {
   const [published, setPublished] = useState(initialPublished)
   const [loading, setLoading] = useState(false)
@@ -1327,7 +1440,13 @@ function VePublishSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       })
-      if (res.ok) setPublished(!published)
+      const data = await res.json()
+      if (res.ok) {
+        setPublished(!published)
+        // Publishing auto-generates a share_token if the deal didn't already have
+        // one -- a proposal marked "live" with nowhere to view it was the bug.
+        if (data.share_token) onTokenChange(data.share_token)
+      }
     } finally {
       setLoading(false)
     }
@@ -1417,6 +1536,7 @@ export function DealView({
   })
 
   const [veProposal, setVeProposal] = useState<VeProposal | null>(deal.ve_proposal)
+  const [shareToken, setShareToken] = useState<string | null>(deal.share_token)
   const [generating, setGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
 
@@ -1483,7 +1603,7 @@ export function DealView({
                 {headerRiskScore}
                 <span className="text-lg font-normal text-gray-400">/100</span>
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">Risk score</p>
+              <p className="text-xs text-gray-500 mt-0.5">Risk score (higher = riskier)</p>
             </div>
           )}
         </div>
@@ -1579,11 +1699,11 @@ export function DealView({
                   <Link key={brief.id} href={`/brief/${brief.id}`} className="block">
                     <div className="py-3 first:pt-0 last:pb-0 flex items-center justify-between hover:bg-gray-50 -mx-2 px-2 rounded transition-colors">
                       <div className="flex items-center gap-3">
-                        <Badge variant="outline" className="text-xs capitalize">
-                          {brief.stage.replace("_", " ")}
+                        <Badge variant="outline" className="text-xs">
+                          {STAGE_LABELS[brief.stage]}
                         </Badge>
                         <p className="text-sm text-gray-700">
-                          {new Date(brief.created_at).toLocaleDateString("en-GB")}
+                          {new Date(brief.call_date ? `${brief.call_date}T00:00:00` : brief.created_at).toLocaleDateString("en-GB")}
                         </p>
                       </div>
                       {brief.meddpicc && (
@@ -1621,10 +1741,11 @@ export function DealView({
                   dealId={deal.id}
                   briefId={latestPovBrief.id}
                   criteria={deal.success_criteria}
+                  totalAgreed={deal.success_criteria_total_agreed}
                   assessment={latestPovBrief.pov_assessment ?? []}
                 />
               )}
-              <ShareSection dealId={deal.id} initialToken={deal.share_token} />
+              <ShareSection dealId={deal.id} token={shareToken} onTokenChange={setShareToken} />
             </>
           ) : (
             <p className="text-sm text-gray-400 py-4">POV has not started yet.</p>
@@ -1657,6 +1778,7 @@ export function DealView({
                 dealId={deal.id}
                 initialPublished={deal.ve_published}
                 hasProposal={!!veProposal}
+                onTokenChange={setShareToken}
               />
             </>
           ) : (

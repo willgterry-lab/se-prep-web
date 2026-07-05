@@ -440,6 +440,156 @@ Rules:
   )
 }
 
+export interface CompletedTaskCandidate {
+  task_id: string
+  evidence: string
+}
+
+// Checks the deal's currently-open tasks against a new call's transcript to see
+// if any of them were actually completed. Returns candidates with evidence for
+// the SC to confirm -- never marks anything done itself. This is what stops the
+// Actions tab from showing a task as "overdue" when a later call already
+// confirmed it happened.
+export async function detectCompletedTasks(
+  openTasks: { id: string; description: string }[],
+  transcript: string
+): Promise<CompletedTaskCandidate[]> {
+  if (!openTasks.length) return []
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant reviewing a customer call transcript to check on previously agreed next actions.
+
+Open tasks from earlier calls on this deal:
+${openTasks.map((t) => `- [${t.id}] ${t.description}`).join("\n")}
+
+New call transcript:
+${transcript}
+
+For each open task above, check whether this transcript gives clear evidence that it has actually been completed (e.g. someone confirms it happened, references the outcome, or thanks the other side for having done it).
+
+Return ONLY a valid JSON array containing only the tasks you have clear evidence for -- do not include a task if the transcript is silent on it or only ambiguously touches on it:
+[
+  {
+    "task_id": "the exact [id] from the list above",
+    "evidence": "verbatim quote from the transcript showing this was completed"
+  }
+]
+
+Rules:
+- Only include a task if the transcript explicitly confirms it is done. Silence about a task is not evidence it was completed.
+- evidence must be a verbatim quote from the transcript.
+- Never invent completions. Return an empty array [] if none are clearly confirmed.`,
+      },
+    ],
+  })
+
+  return parseJson<CompletedTaskCandidate[]>(
+    message.content[0].type === "text" ? message.content[0].text : "[]"
+  )
+}
+
+// Best-effort extraction of the actual call date from the transcript itself
+// (e.g. a stated date at the top of a recording transcript, or someone saying
+// "today is the 12th of May"). Used as a fallback pre-fill when the SC doesn't
+// set a call date manually -- never guesses if no explicit date is present.
+export async function extractCallDate(transcript: string): Promise<string | null> {
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 100,
+    messages: [
+      {
+        role: "user",
+        content: `Look at this call transcript and find the actual date the call took place, if it is explicitly stated anywhere (e.g. a header, timestamp, or someone saying what today's date is).
+
+Transcript:
+${transcript}
+
+Return ONLY valid JSON with no code fences or preamble:
+{ "call_date": "YYYY-MM-DD" }
+
+If no explicit date is stated anywhere in the transcript, return:
+{ "call_date": null }
+
+Never infer or guess a date from context alone (e.g. do not assume a date from mentions of future deadlines). Only return a date that is explicitly stated as the current/today's date for this call.`,
+      },
+    ],
+  })
+
+  const result = parseJson<{ call_date: string | null }>(
+    message.content[0].type === "text" ? message.content[0].text : '{"call_date":null}'
+  )
+  return result.call_date ?? null
+}
+
+export interface PovCallClassification {
+  index: number
+  call_type: "setup" | "checkin" | "review"
+  reasoning: string
+}
+
+// Given several POV call transcripts uploaded together, works out which stage
+// each one represents and the correct chronological order -- comparing them
+// side by side is far more reliable than classifying each in isolation, since
+// "check-in" and "final review" can look similar out of context but the
+// progression across all of them usually isn't. This determines which
+// transcript gets processed first, which matters: the first-processed call is
+// the one that triggers extracting the (immutable) success criteria.
+export async function classifyPovCallSequence(
+  transcripts: string[]
+): Promise<PovCallClassification[]> {
+  if (transcripts.length < 2) {
+    return transcripts.map((_, index) => ({
+      index,
+      call_type: "setup",
+      reasoning: "Only one call provided -- nothing to compare it against.",
+    }))
+  }
+
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1500,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant organising a set of Proof of Value (POV) call transcripts into their correct chronological order.
+
+A POV typically has three stages:
+- Setup / kickoff: the prospect and SC agree the success criteria for the trial. Usually the first call -- listen for language actively agreeing what will be measured, not just referencing it.
+- Check-in: a mid-trial call reviewing progress against criteria already agreed in an earlier call.
+- Final review: the concluding call assessing whether criteria were met and discussing next steps (renewal, purchase decision, expansion).
+
+You are given ${transcripts.length} transcripts, labelled by index below. Determine which stage each one represents and the correct chronological order, using evidence from the transcripts themselves: explicit dates, references to a previous call, criteria being newly agreed vs already-agreed and being reviewed, or a concluding/decision tone.
+
+${transcripts.map((t, i) => `--- Transcript ${i} ---\n${t}`).join("\n\n")}
+
+Return ONLY a valid JSON array, one entry per transcript, ORDERED CHRONOLOGICALLY (earliest call first, regardless of the order the transcripts were given to you above):
+[
+  {
+    "index": 0,
+    "call_type": "setup" | "checkin" | "review",
+    "reasoning": "one sentence, referencing a verbatim quote from the transcript that supports this classification"
+  }
+]
+
+Rules:
+- Every transcript index must appear exactly once.
+- Base your ordering and classification only on evidence in the transcripts. Never guess based on the order they were given to you.
+- More than one transcript can be the same stage (e.g. several check-ins across a longer POV) -- label them all "checkin" except whichever is clearly the concluding call.
+- reasoning must reference a verbatim quote from that transcript.`,
+      },
+    ],
+  })
+
+  return parseJson<PovCallClassification[]>(
+    message.content[0].type === "text" ? message.content[0].text : "[]"
+  )
+}
+
 export async function generateNextActions(
   transcript: string,
   prospect_company: string,
@@ -492,7 +642,7 @@ export async function extractSuccessCriteria(
   transcript: string,
   product: ProductContext,
   prospect_company: string
-): Promise<SuccessCriterion[]> {
+): Promise<{ total_agreed: number; criteria: SuccessCriterion[] }> {
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 800,
@@ -509,25 +659,31 @@ ${transcript}
 
 Extract the specific, measurable success criteria that were agreed on this call for the POV trial. These are the outcomes the prospect expects the product to demonstrate during the evaluation period.
 
-Return ONLY valid JSON array with no code fences or preamble:
-[
-  { "id": 1, "description": "..." },
-  { "id": 2, "description": "..." }
-]
+First, identify every distinct, specific, measurable criterion actually agreed on the call, however many that is. Then select at most the 5 most distinct and clearly measurable of those to return as "criteria" -- if there are more than 5, prioritise the ones stated with the clearest numeric threshold or concrete outcome, since near-duplicates or vaguer restatements of the same point are not worth a separate slot.
+
+Return ONLY valid JSON object with no code fences or preamble:
+{
+  "total_agreed": 7,
+  "criteria": [
+    { "id": 1, "description": "..." },
+    { "id": 2, "description": "..." }
+  ]
+}
 
 Rules:
 - Extract only criteria that were explicitly agreed or confirmed on the call.
 - Each criterion should be specific and measurable -- use the prospect's own words where possible.
-- Return 2-5 criteria. If fewer than 2 clear criteria were agreed, return only those that were explicitly confirmed.
+- "total_agreed" is the full count of distinct criteria you identified before narrowing down to 5 -- if there were only 3 distinct criteria, total_agreed is 3 and criteria has 3 entries (not padded or invented to reach 5).
+- "criteria" contains at most 5 entries. If fewer than 2 clear criteria were agreed, return only those that were explicitly confirmed.
 - IDs must be sequential integers starting at 1.
-- Return an empty array [] only if no clear criteria were discussed.
+- Return { "total_agreed": 0, "criteria": [] } only if no clear criteria were discussed.
 - No code fences or preamble.`,
       },
     ],
   })
 
-  return parseJson<SuccessCriterion[]>(
-    message.content[0].type === "text" ? message.content[0].text : "[]"
+  return parseJson<{ total_agreed: number; criteria: SuccessCriterion[] }>(
+    message.content[0].type === "text" ? message.content[0].text : '{"total_agreed":0,"criteria":[]}'
   )
 }
 
@@ -897,7 +1053,9 @@ Return ONLY a valid JSON array with no code fences or preamble:
     "numeric_value": 12,
     "unit": "hours/week",
     "currency": null,
-    "evidence": "verbatim quote from the transcript"
+    "evidence": "verbatim quote from the transcript",
+    "category": "time" | "cost" | "error_rate" | "kpi" | "context",
+    "direction": "increase" | "decrease"
   }
 ]
 
@@ -905,8 +1063,15 @@ Rules:
 - Every item must have a verbatim evidence quote from the transcript.
 - Never invent or infer a number that was not stated.
 - numeric_value must be the primary number (e.g. for "12 hours per week", numeric_value is 12).
-- unit must describe what numeric_value measures (e.g. "hours/week", "FTE", "GBP/month", "error rate %").
+- unit must describe what numeric_value measures (e.g. "hours/week", "FTE", "GBP/month", "error rate %"). Never bake a currency code into unit -- use the separate "currency" field for that, and keep unit to the non-monetary part (e.g. "/person", "/year").
 - currency should be null for non-monetary metrics (time, headcount, rates).
+- category classifies what kind of baseline this is:
+  - "time": a duration figure (hours/days spent on a task).
+  - "cost": a monetary rate or spend figure.
+  - "error_rate": a failure/error rate and its consequence.
+  - "kpi": a current-state performance metric that a value driver could move (e.g. conversion rate, average order value, throughput).
+  - "context": headcount/FTE counts, or volume/frequency counts (orders, transactions, reports per period) -- these describe the scale of the operation, not something to "improve" by a percentage. A prospect wanting to grow order volume, or a deal with an explicit no-headcount-reduction constraint, are both reasons a raw count is context, not a driver.
+- direction only applies to non-"context" categories: "increase" if a bigger number is the improvement (e.g. average order value, conversion rate), "decrease" if a smaller number is the improvement (time, cost, error rate). Omit direction for "context" items.
 - key must be lowercase, underscores only, unique within the array.
 - Return at most 12 inputs. Prioritise the most specific and evidenced figures over inferred or implied ones.
 - Return an empty array [] if no quantifiable inputs were discussed.`,
@@ -937,8 +1102,15 @@ export async function generateValueProposal({
   const baselineText = aggregated_baselines.length
     ? aggregated_baselines
         .map((b) => {
+          // "context" baselines (headcount, order volume) describe scale, not a pain
+          // to improve -- no SC assumption applies to them, but they're still listed
+          // as reference figures (e.g. for converting a volume into a time figure).
+          if (b.category === "context") {
+            return `- ${b.label}: ${b.raw_value} (context figure -- not an improvement assumption)\n  Evidence: "${b.evidence}"`
+          }
           const sliderPct = ve_slider_inputs[b.key] ?? 40
-          return `- ${b.label}: ${b.raw_value} (SC assumption: ${sliderPct}% improvement)\n  Evidence: "${b.evidence}"`
+          const directionText = b.direction === "increase" ? "increase" : "improvement"
+          return `- ${b.label}: ${b.raw_value} (SC assumption: ${sliderPct}% ${directionText})\n  Evidence: "${b.evidence}"`
         })
         .join("\n")
     : "No quantified baseline inputs captured."
@@ -980,8 +1152,8 @@ Build a structured value proposition following these rules:
 
 RULES:
 1. Select exactly 2 to 3 value drivers based on what pains and quantified baselines are actually present. Do not invent drivers for which there is no baseline evidence.
-2. For each driver, include a one-sentence calculation showing the maths transparently. Use the baseline numbers and SC assumption percentages provided above -- do not invent percentages.
-3. The "calculated_value" field must express the value as a range (e.g. "12,000 to 18,000 per year"). Use whatever currency appears in the baseline inputs. If no monetary currency is present for a driver, express value as time or volume saved rather than a monetary figure.
+2. For each driver, include a one-sentence calculation showing the maths transparently, using only the baseline numbers and SC assumption percentages provided above -- do not invent percentages. The unit in the driver's "name" and in "calculated_value" must be the exact same unit the calculation arrives at. If the calculation converts between units (for example, a volume of orders per week into a time figure like staff-hours per week), you must use another baseline listed above that gives the per-unit conversion rate (for example, minutes per order) and show that conversion step explicitly in the "calculation" text. Never state a headline in one unit (hours) while the maths underneath only multiplies a different unit (order count) by a percentage.
+3. The "calculated_value" field must express a genuine low-to-high range (e.g. "12,000 to 18,000 per year"), never the same number repeated as both ends. Derive the range using one of: (a) the low end applies the SC's assumption conservatively (e.g. to only the most firmly evidenced part of the baseline) and the high end applies it to the full evidenced baseline, (b) if a matched case study reports a different realised outcome than the SC's assumption, use the SC assumption as one bound and the case study's outcome as the other, or (c) another approach grounded in the evidence above -- state which approach you used within the "calculation" text. If you genuinely cannot construct two different, evidence-grounded bounds for a driver, state a single figure (e.g. "12,000 per year") rather than repeating one number as a fake range. Use whatever currency appears in the baseline inputs. If no monetary currency is present for a driver, express value as time or volume saved rather than a monetary figure.
 4. "pct_improvement" must equal the SC assumption percentage used for that driver (taken from the baseline inputs above).
 5. Confidence: "high" = evidenced baseline number AND a matching case study outcome; "medium" = one of those two; "low" = neither.
 6. "evidence" must be a specific outcome from one of the matched case studies above. Do not invent case study references.

@@ -100,6 +100,7 @@ export default function PostCallNewPage() {
 
   const [deal, setDeal] = useState<Deal | null>(null)
   const [transcript, setTranscript] = useState("")
+  const [callDate, setCallDate] = useState("")
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [stream, setStream] = useState<StreamState>({
@@ -195,7 +196,7 @@ export default function PostCallNewPage() {
       const res = await fetch(`/api/deals/${dealId}/post-call`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript }),
+        body: JSON.stringify({ transcript, call_date: callDate || null }),
       })
 
       if (!res.ok || !res.body) {
@@ -350,6 +351,20 @@ export default function PostCallNewPage() {
                 rows={20}
                 required
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="call-date">Call date (optional)</Label>
+              <input
+                id="call-date"
+                type="date"
+                value={callDate}
+                onChange={(e) => setCallDate(e.target.value)}
+                className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm"
+              />
+              <p className="text-xs text-gray-400">
+                Leave blank to use today&apos;s date, or to try extracting a date stated in the transcript itself.
+              </p>
             </div>
           </CardContent>
         </Card>

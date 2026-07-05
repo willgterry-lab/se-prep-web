@@ -106,6 +106,7 @@ export default function VeNewPage() {
   const [questionsLoading, setQuestionsLoading] = useState(true)
   const [transcript, setTranscript] = useState("")
   const [recordingUrl, setRecordingUrl] = useState("")
+  const [callDate, setCallDate] = useState("")
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [dragging, setDragging] = useState(false)
   const [stream, setStream] = useState<StreamState>({
@@ -222,6 +223,7 @@ export default function VeNewPage() {
         body: JSON.stringify({
           transcript,
           recording_url: recordingUrl || null,
+          call_date: callDate || null,
         }),
       })
 
@@ -373,6 +375,24 @@ export default function VeNewPage() {
               placeholder="https://..."
               value={recordingUrl}
               onChange={(e) => setRecordingUrl(e.target.value)}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Call date */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Call date</CardTitle>
+            <CardDescription className="mt-1">
+              Optional. Leave blank to use today&apos;s date, or to try extracting a date stated in the transcript itself.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <input
+              type="date"
+              value={callDate}
+              onChange={(e) => setCallDate(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm"
             />
           </CardContent>
         </Card>

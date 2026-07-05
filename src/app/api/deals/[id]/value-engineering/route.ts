@@ -10,6 +10,8 @@ import {
   draftVeCallEmail,
   generateNextActions,
   extractStakeholders,
+  detectCompletedTasks,
+  extractCallDate,
 } from "@/lib/analysis"
 import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, MeddpiccScore, Brief, VeBaselineInput } from "@/types"
@@ -29,7 +31,7 @@ export async function POST(
 
   const scName = (user.user_metadata?.full_name as string | undefined) ?? ""
 
-  const { transcript, recording_url } = await req.json()
+  const { transcript, recording_url, call_date } = await req.json()
 
   const [{ data: deal }, { data: ctx }] = await Promise.all([
     supabase.from("deals").select("*").eq("id", dealId).eq("user_id", user.id).single(),
@@ -51,6 +53,12 @@ export async function POST(
   const prevBrief =
     (recentBriefs as Pick<Brief, "stage" | "meddpicc" | "matched_case_studies" | "risks">[] | null)?.[0] ??
     null
+
+  const { data: openTasks } = await supabase
+    .from("deal_tasks")
+    .select("id, description")
+    .eq("deal_id", dealId)
+    .eq("status", "open")
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -80,7 +88,7 @@ export async function POST(
         const today = new Date().toISOString().split("T")[0]
 
         // Phase 2: downstream analysis in parallel
-        const [risks, questionsResult, email, actions, stakeholders] = await Promise.all([
+        const [risks, questionsResult, email, actions, stakeholders, completedCandidates, resolvedCallDate] = await Promise.all([
           identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
             emit({ type: "risks", data: r })
             return r
@@ -110,6 +118,8 @@ export async function POST(
             return r
           }),
           extractStakeholders(transcript, deal.prospect_company),
+          detectCompletedTasks(openTasks ?? [], transcript),
+          call_date ? Promise.resolve(call_date as string) : extractCallDate(transcript),
         ])
 
         const meddpiccFull: MeddpiccScore = {
@@ -135,6 +145,7 @@ export async function POST(
             pov_assessment: [],
             recording_url: recording_url ?? null,
             ve_baseline_inputs: baseline,
+            call_date: resolvedCallDate,
           })
           .select("id")
           .single()
@@ -146,6 +157,15 @@ export async function POST(
         }
 
         await upsertStakeholders(supabase, dealId, brief.id, stakeholders)
+
+        const openTaskIds = new Set((openTasks ?? []).map((t) => t.id))
+        for (const candidate of completedCandidates) {
+          if (!openTaskIds.has(candidate.task_id)) continue
+          await supabase
+            .from("deal_tasks")
+            .update({ suggested_done_evidence: candidate.evidence })
+            .eq("id", candidate.task_id)
+        }
 
         if (actions.length > 0) {
           const source = `ve_${today}`

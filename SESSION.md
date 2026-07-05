@@ -1,6 +1,161 @@
 # Session log
 
-## Current state (2026-07-05)
+## Current state (2026-07-05, multi-call POV upload)
+
+### Completed this session
+Built for an upcoming demo: ability to upload several POV call transcripts at once (e.g. setup +
+check-in + final review together) instead of logging each one separately. `npx tsc --noEmit`
+clean, `npm run build` passes, `npx eslint src/` shows the same 7 pre-existing problems as
+baseline (confirmed via diff), nothing new. No schema migration needed.
+
+**Refactor first**: extracted the single-POV-call analysis logic (previously ~150 lines inline in
+`POST /api/deals/[id]/pov`) into `src/lib/pov-analysis.ts` (`runSinglePovAnalysis`), fully
+self-contained -- it fetches its own deal/criteria/prior-brief/open-tasks state fresh from the DB
+rather than accepting them as params. This is what lets the same function be called once (the
+existing single-call route, behaviour unchanged) or in a loop (the new batch route) without
+duplicating logic or risking the two drifting apart.
+
+**Auto-detection, not manual tagging**: the user asked for the tool to recognise which call is
+which, not just accept a pile of files. New `classifyPovCallSequence` (`src/lib/analysis.ts`)
+takes all the transcripts together and returns the correct chronological order plus a
+setup/checkin/review label per one, with reasoning grounded in a verbatim quote. Classifying them
+side by side is far more reliable than one at a time -- "check-in" and "final review" can look
+similar in isolation but the progression across calls usually makes it obvious.
+
+**A confirm step before anything is saved**: whichever call is detected as first triggers
+extracting the (immutable) success criteria, so a misclassification there isn't cosmetic -- new
+`POST /api/deals/[id]/pov/classify` returns the detected order for the SC to review (reorder with
+up/down, relabel via a picker, see the AI's reasoning + a transcript excerpt per call) before
+`POST /api/deals/[id]/pov/batch` actually runs the analysis. Both are new routes; the existing
+single-call `POST /api/deals/[id]/pov` is untouched apart from now delegating to the shared
+function.
+
+**Batch processing is sequential, not parallel**: each POV call's scoring depends on the one
+before it being saved already (delta computation, risk carry-forward, criteria continuity), so the
+batch route loops through the confirmed order one at a time, streaming NDJSON events tagged with
+`call_index` so the client can show per-call progress. Set `maxDuration = 300` (existing routes use
+60) since 3 sequential calls' worth of AI work can run long -- worth checking this against the
+project's actual Vercel plan limit before the demo.
+
+**UI**: `/deal/[id]/pov/new` now starts with one call slot (identical to the old single-call form)
+and a "+ Add another call" link. With exactly one slot, behaviour is byte-for-byte the same as
+before (manual call-type picker, direct submit). With two or more, submit goes through
+classify -> confirm -> batch-stream instead, with a per-call progress card in the streaming view.
+
+### Outstanding
+- **Not click-tested live** -- Chrome extension not connected in this environment. Basic sanity
+  check only: routes respond 401 (not 500) to an unauthenticated request, confirming they're wired
+  up; the actual classify/confirm/batch flow needs a real run before relying on it in the demo.
+- Worth a dry run with the actual Bramwell (or demo) transcripts before the real thing, particularly
+  to sanity-check the classification reasoning and that maxDuration=300 is enough headroom.
+
+## Prior state (2026-07-05, live QA fixes)
+
+### Completed this session
+Live QA pass against the Bramwell Fine Foods test deal (`6bfe5d15-971d-4068-b9b2-34befb4e909c`)
+surfaced 14 issues across the deal view, salesroom, and PDF export. Re-verified `AGENTS.md` against
+the actual code first (found real drift -- see below), answered 5 gated design questions before
+touching code, fixed 2 immediately (unit-conversion + degenerate ranges, both root-caused to the
+same thing: `generateValueProposal` has no code-side arithmetic at all, it's 100% LLM-authored text
+with no dimensional-consistency check), then implemented everything else once the user confirmed.
+Three new schema migrations (v6, v7, v8) -- **must be run in the Supabase SQL editor before testing
+any of this**, otherwise inserts referencing the new columns will fail. `npx tsc --noEmit` clean;
+`npm run build` passes; `npx eslint src/` shows the same 7 pre-existing problems (1 error, 6
+warnings), confirmed via `git stash` diff, nothing new introduced.
+
+**Doc drift found (corrected in `AGENTS.md`):** `deal_tasks.owner` glossary/schema comment still
+said "SC / Prospect / null" -- `"Joint"` was added as a real third value in the 2026-07-04 session
+(Phase C) and never backfilled into the docs. This is exactly why item #1 below needed a "what are
+the real values" check before writing a filter. The "up to 5" success criteria cap, by contrast,
+was NOT drifted -- it's a real, deliberate, currently-enforced prompt constraint (see #7).
+
+**Fixed directly (no gate needed):**
+- **Salesroom task leak (critical)**: `/s/[token]` fetched *every* open `deal_task` regardless of
+  owner, including SC-internal admin/coaching notes -- one example seen live was an internal
+  instruction to the SC about how to caveat a soft number to the prospect. Now filtered to
+  `owner in ('Prospect', 'Joint')` only; SC-owned and unowned tasks never reach the query.
+- **VE unit-conversion bug**: a driver headlined "~1,170 staff-hours/week freed" but the shown
+  maths only ever multiplied order *count* by a percentage, never converting through the
+  transcript's own 7-minutes-per-order baseline (1,170 hours would be 2.6x the team's total
+  capacity). `generateValueProposal`'s prompt now requires the headline unit and the calculation's
+  actual unit to match, and requires an explicit conversion step through another listed baseline
+  when volume is turned into time.
+- **Degenerate value ranges**: two of three drivers rendered identical low/high bounds (e.g.
+  "£760,000 to £760,000"). Root cause: `calculated_value` and `calculation` are pure LLM freeform
+  text with zero code-side arithmetic -- the one driver that got a genuine range did so by chance,
+  not through any distinct mechanism. Prompt now requires a genuine range via one of three named,
+  evidence-grounded methods (conservative-vs-full baseline, SC-assumption-vs-case-study, or a
+  stated alternative), and explicitly forbids repeating one number as a fake range -- if no genuine
+  range can be built, it must state a single figure instead. Both this and the unit-conversion fix
+  only take effect on a *regenerated* proposal; Bramwell's saved one needs "Regenerate value
+  proposal" clicked to pick them up.
+- **VE slider eligibility**: every extracted baseline (headcount, order volume, average order
+  value, time, cost figures) got an identical "40% improvement" slider, including ones where that's
+  nonsensical (a 4.8 FTE "improvement" on a 12-person team directly contradicts the deal's explicit
+  no-headcount-reduction framing; order volume and average order value both want to go *up*, not
+  down). Added `category` (`time | cost | error_rate | kpi | context`) and `direction`
+  (`increase | decrease`) to `VeBaselineInput`, populated at extraction time. `context` baselines
+  (headcount, volume) are excluded from the slider UI entirely -- shown as read-only reference
+  figures instead -- and non-context sliders now label "increase" vs "improvement" correctly.
+  `generateValueProposal` also stopped attaching a phantom "SC assumption: 40%" to context
+  baselines. Legacy already-extracted baselines (Bramwell's current data) have no `category` and
+  are treated as slider-eligible (old behaviour) until the deal gets a fresh VE call.
+- **Publish/share_token decoupling**: a VE proposal could show "Live on salesroom" while the POV
+  tab's own share section still said "Generate salesroom link" -- published-but-unreachable.
+  `PATCH /api/deals/[id]/ve-proposal` now auto-generates a `share_token` on publish if one doesn't
+  exist, and the token state was lifted from `ShareSection`'s local state up into `DealView` so both
+  it and `VePublishSection` stay in sync without a page reload.
+- **Task auto-completion suggestions**: tasks stayed "OVERDUE" even when a later call's transcript
+  confirmed they were done (e.g. "send data flow diagram to Dave for sign-off", later confirmed
+  complete). New `detectCompletedTasks` runs alongside the other per-call analysis, comparing
+  currently-open tasks against the new transcript for explicit confirmation, verbatim evidence
+  required. Never auto-completes -- writes `suggested_done_evidence` on the task, which renders as a
+  "Confirm done" / "Not yet" prompt in the Actions tab.
+- **Stakeholder duplicates**: `upsertStakeholders` only matched on exact case-insensitive full name,
+  so "Rachel" (bare first name, from a later call) and "Rachel Osei-Bonsu" became two rows. Now
+  merges a bare-first-name extraction into an existing stakeholder when it unambiguously matches
+  exactly one existing person's first name (falls back to inserting new if ambiguous). Also fixed a
+  latent bug in the original "don't insert the same name twice in one batch" guard -- it used an
+  empty string as a sentinel, which is falsy in JS, so it never actually fired.
+- **Risk score legend**: header stat now reads "Risk score (higher = riskier)".
+- **Stage badge capitalisation**: the Overview tab's Briefs list badge used raw `brief.stage` text
+  through generic CSS `capitalize`, which can't know "POV" is an acronym (hence "Pov"). Swapped to
+  the same `STAGE_LABELS` map every other badge already used.
+- **VE slider number formatting**: raw values like "140000.0 GBP/year" -- added a formatter
+  (comma separators, proper currency symbol, no trailing ".0", no literal "GBP" text baked into the
+  unit string). Checked the rest of the app for the same pattern; this was the only call site.
+- **Placeholder date bug**: NOT a data population bug -- `reminder_at` was correctly `null`.
+  It's a display issue: an empty native `<input type="date">` renders the browser's own locale
+  placeholder ("dd/mm/yyyy") as if it were content. Fixed by showing a "+ Set date" affordance
+  instead of a bare empty input when no date is set.
+
+**Fixed after explicit confirmation:**
+- **Success criteria cap (#7)**: confirmed the "2-5" cap is real and intentional (matches
+  `AGENTS.md`), not a bug -- Bramwell's call agreeing 7 just happens to be the first to exceed it.
+  Kept the cap (didn't unilaterally raise a deliberate constraint) but added
+  `deals.success_criteria_total_agreed`, populated by `extractSuccessCriteria` (now returns
+  `{ total_agreed, criteria }`), and a note on `PovProgressCard` when the call agreed more than are
+  tracked -- visible instead of buried in a note field.
+- **Call date (#9)**: added `briefs.call_date` (date, nullable), an optional field on the
+  post-call/POV/VE forms (not prep -- prep happens before any call, so "call date" doesn't apply),
+  with `extractCallDate` as a best-effort fallback when left blank (never guesses; only returns a
+  date the transcript explicitly states). Score history table, Overview briefs list, and the
+  standalone brief page header all now show `call_date ?? created_at`.
+
+### Not changed this pass
+- **POV check-in "no MEDDPICC change"** and other purely observational notes from the live QA --
+  not reproduced in code, not touched speculatively.
+
+### Outstanding
+- **Run migrations v6, v7, v8 in the Supabase SQL editor before testing.**
+- Live UI click-through still not possible -- Chrome extension not connected in this environment.
+  Dev server left running at `localhost:3000`.
+- Bramwell's existing saved VE proposal and baseline inputs won't reflect the #2/#3/#4 fixes until
+  the SC re-runs "Regenerate value proposal" (proposal fixes) or logs a fresh VE call (baseline
+  category/direction tagging -- extraction-time only, not retroactive).
+- Uncommitted as of now.
+
+## Prior state (2026-07-05, punch list 2)
 
 ### Completed this session
 Implemented the second punch list from `~/Downloads/Notes on SE Agent 05_07_26.pdf` (live-test

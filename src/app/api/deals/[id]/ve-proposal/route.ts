@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { generateValueProposal } from "@/lib/analysis"
+import { randomBytes } from "crypto"
 import type { ProductContext, VeBaselineInput, VeSliderInputs, MatchedCaseStudy } from "@/types"
 
 // POST: generate and save value proposal
@@ -107,7 +108,7 @@ export async function PATCH(
 
   const { data: deal } = await supabase
     .from("deals")
-    .select("id, ve_proposal")
+    .select("id, ve_proposal, share_token")
     .eq("id", dealId)
     .eq("user_id", user.id)
     .single()
@@ -119,7 +120,17 @@ export async function PATCH(
   }
 
   const ve_published = action === "publish"
-  await supabase.from("deals").update({ ve_published }).eq("id", dealId)
 
-  return NextResponse.json({ ve_published })
+  // Publishing makes the proposal "live on the salesroom" -- that's only true if
+  // a share_token (the salesroom's URL) actually exists yet. Generate one here
+  // rather than allowing a published-but-unreachable state.
+  const share_token =
+    action === "publish" && !deal.share_token ? randomBytes(32).toString("hex") : deal.share_token
+
+  await supabase
+    .from("deals")
+    .update({ ve_published, ...(share_token !== deal.share_token ? { share_token } : {}) })
+    .eq("id", dealId)
+
+  return NextResponse.json({ ve_published, share_token })
 }

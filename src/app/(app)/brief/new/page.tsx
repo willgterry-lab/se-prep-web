@@ -620,6 +620,7 @@ export default function NewBriefPage() {
       pov_assessment: [],
       recording_url: null,
       ve_baseline_inputs: [],
+      call_date: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }

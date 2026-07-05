@@ -211,3 +211,32 @@ create policy "Users manage own deal stakeholders"
 create trigger set_updated_at_deal_stakeholders
   before update on public.deal_stakeholders
   for each row execute function public.set_updated_at();
+
+
+-- ─── Migration v6: task auto-completion suggestions ──────────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+
+-- Set when a later call's transcript indicates an open task is already done.
+-- Never auto-completes the task itself -- the SC confirms or dismisses in the UI.
+alter table public.deal_tasks
+  add column if not exists suggested_done_evidence text;
+
+
+-- ─── Migration v7: success criteria discrepancy tracking ─────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+
+-- Full count of distinct criteria agreed on the kickoff call, before narrowing
+-- down to the 5 stored in success_criteria. Lets the UI show when a call agreed
+-- more criteria than the app tracks, instead of silently dropping the rest.
+alter table public.deals
+  add column if not exists success_criteria_total_agreed integer;
+
+
+-- ─── Migration v8: real call date ─────────────────────────────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+
+-- The actual date the call happened, distinct from created_at (when the brief
+-- was logged into the app, which can be days or weeks later). SC-set manually,
+-- or best-effort extracted from the transcript; null falls back to created_at.
+alter table public.briefs
+  add column if not exists call_date date;
