@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import { DealView } from "@/components/deal-view"
-import type { Deal, Brief, DealTask } from "@/types"
+import type { Deal, Brief, DealTask, DealStakeholder } from "@/types"
 
 export default async function DealPage({
   params,
@@ -23,7 +23,7 @@ export default async function DealPage({
 
   if (!deal) notFound()
 
-  const [{ data: briefs }, { data: tasks }] = await Promise.all([
+  const [{ data: briefs }, { data: tasks }, { data: stakeholders }] = await Promise.all([
     supabase
       .from("briefs")
       .select("*")
@@ -34,6 +34,11 @@ export default async function DealPage({
       .select("*")
       .eq("deal_id", id)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("deal_stakeholders")
+      .select("*")
+      .eq("deal_id", id)
+      .order("created_at", { ascending: true }),
   ])
 
   return (
@@ -41,6 +46,7 @@ export default async function DealPage({
       deal={deal as Deal}
       briefs={(briefs ?? []) as Brief[]}
       tasks={(tasks ?? []) as DealTask[]}
+      stakeholders={(stakeholders ?? []) as DealStakeholder[]}
     />
   )
 }

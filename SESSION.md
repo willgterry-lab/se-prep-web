@@ -1,6 +1,59 @@
 # Session log
 
-## Current state (2026-07-02)
+## Current state (2026-07-04)
+
+### Completed this session
+Implemented the full punch list from `~/Downloads/Notes on SE Agent .pdf` (live-test feedback dated 2026-07-03), across 6 phases. Schema migration v5 added (stakeholders). Full `npm run build` passes; typecheck and lint clean (only pre-existing warnings remain, verified via `git stash` diff before/after).
+
+**Phase A -- bug fixes + cheap wins:**
+- Fixed stale risk/delta bug: `deal-view.tsx` was using `briefs.find(b => b.stage === "post_call")` (first match) instead of `latestBrief` for `RiskCard`/`DeltaCard` -- risks and score movement were frozen at the very first post-call brief forever, even once later POV/VE briefs saved fresher data. Backend recomputation was already correct; this was a pure render-side bug.
+- Added `stripEmDashes()` in `analysis.ts`, wired into `parseJson` (all AI JSON output) and all four `draft*Email` functions -- code-level enforcement alongside the existing prompt instruction.
+- New `DealProgressBar` component (Prep -> Post-call -> POV -> VE) in the deal header, reusing the POV mini-timeline's visual pattern.
+- Swapped deal title to company-first (was champion-first) in `deal-view.tsx`, `dashboard/page.tsx`, `brief-view.tsx`.
+
+**Phase B -- cumulative scoring + stakeholders (Migration v5):**
+- `scoreMeddpicc`/`identifyRisks` now take optional `priorMeddpicc`/`priorRisks` args (the immediately-prior brief's data, which itself already reflects everything cumulative up to that point -- no need to refetch full history). Prompt rule: carry forward prior evidence unless this transcript actively contradicts it; absence of re-mention is not regression. Wired into all three stage routes + prep.
+- New `deal_stakeholders` table (case-insensitive unique index on `deal_id, lower(name)`), `extractStakeholders()` in `analysis.ts`, `upsertStakeholders()` helper in new `src/lib/stakeholders.ts`, called from all four analysis routes. New `/api/deals/[id]/stakeholders` (GET/POST) + `[stakeholderId]` (PATCH/DELETE) routes. New `StakeholdersCard` in deal-view.
+
+**Phase C -- next actions overhaul:**
+- `generateNextActions` prompt now allows `owner: "Joint"`. Tasks PATCH route extended to accept `reminder_at`. New `POST /api/deals/[id]/tasks` for manual add.
+- `TaskList` reworked: tabs (All/SC/Prospect/Joint) via the `Tabs` primitive, per-stage sub-headers derived from `task.source` prefix, inline "+ Add action" form, editable due date per row (native date input).
+
+**Phase D -- MEDDPICC grid + questions + risk score:**
+- `MeddpiccGridCard`: all 8 elements in an aligned CSS grid with click-to-expand evidence/gap. `DeltaCard` also restyled to a true CSS grid for column alignment (was flex-based, matches the user's attached mock now).
+- `QuestionsCard`: surfaces `suggested_questions`/`answered_questions` (existed in the data model since day one but was never rendered anywhere).
+- `computeRiskScore()` -- **deliberately placed in new `src/lib/risk-score.ts`, NOT `analysis.ts`**, because `analysis.ts` imports the Anthropic SDK client at module scope; importing it from the client-side `deal-view.tsx` would have bundled the SDK (and a `process.env.ANTHROPIC_API_KEY`-keyed constructor call) into the browser. Caught this before it shipped -- worth remembering for any future pure helper that a client component needs from what's currently a server-only file.
+
+**Phase E -- POV override, call-type deep link, salesroom preview:**
+- New `PATCH /api/deals/[id]/pov-assessment` to manually override a POV criterion's status + note (the `PovAssessment.notes` field existed in the type since the POV stage was built but was never wired to anything). `PovProgressCard` got inline edit UI.
+- `/pov/new` now reads `?call_type=` via `useSearchParams` (verified this doesn't break the build/prerendering); `PovStageCard`'s "Log check-in call"/"Log final review" links now pass it. Explicit query param takes priority over the existing auto-detection from brief count.
+- `ShareSection` got a "Preview as prospect" link to `/s/[token]`.
+
+**Phase F -- tabbed deal view:**
+- `DealView` restructured: header/progress bar/stakeholders/stage-CTA stay above the fold, then `Tabs` (Overview / Risks / POV / Actions / VE) hold everything else. Kept as one file (didn't split into `deal-view/*.tsx` sub-files as the plan floated -- not worth the import churn risk for a same-session change).
+
+### Verification
+- `npx tsc --noEmit` clean throughout.
+- `npm run build` succeeds (all routes compile, including the new `?call_type=` search-param usage -- no Suspense boundary issue).
+- `npx eslint src/` -- only pre-existing warnings remain (confirmed via `git stash` before/after diff), no new issues introduced.
+- Could NOT click through the live authenticated app this session -- Chrome browser extension was not connected in this environment. Dev server was left running at `localhost:3000` for manual testing.
+
+**Migration v5 -- applied and verified (2026-07-04):** user ran it in the Supabase SQL editor. Verified directly against the live DB via REST API (service role key) rather than the UI, since browser access wasn't available:
+- `deal_stakeholders` table exists with all expected columns.
+- Case-insensitive dedup confirmed: inserting "Rachel Adams" then "rachel adams" for the same deal correctly 409s on `deal_stakeholders_deal_id_lower_name_idx`.
+- `updated_at` trigger fires on update (confirmed timestamp changed on a role edit, `created_at` unchanged).
+- RLS confirmed: anon key (no user session) gets an empty result for a deal it has no access to, even though the row existed (service-role key could see it).
+- `GET /api/deals/[id]/stakeholders` returns 401 (not 500) unauthenticated -- route wiring is correct.
+- Test row was inserted against a real deal (Luminary Brands) for these checks, then deleted -- no residue left in the data.
+
+### Outstanding
+- Live UI verification still needed (DB-level checks above don't cover the actual click-through): stakeholder auto-extraction from a real transcript, cumulative scoring behaviour across a real multi-call deal (does it actually stop the "score drops for no reason" complaint without becoming falsely monotonic?), tabbed deal view on a deal with data in every stage, task tabs/manual-add/date-edit, POV manual override, call-type deep link, salesroom preview link.
+- Original user note "post-call/POV/VE stages don't stream results the same way as prep" was investigated and NOT reproduced in code -- all four stage pages already share an identical NDJSON streaming pattern. Possibly the deployed site was stale (VE commit `00b8cfb` was still unpushed at the time this session started) or the difference was something else entirely. Worth asking the user to re-check live rather than assuming it's fixed.
+- seagent.co.uk DNS still not pointed to Vercel (carried over from prior session).
+- Privacy page still says "SE Prep" -- needs rename pass (carried over).
+- Local commits from this session (Phases A-F) not yet committed/pushed -- working tree still has all changes uncommitted as of end of session. Commit and push when ready to deploy; note origin was already 1 commit behind before this session (VE stage, 00b8cfb).
+
+## Prior state (2026-07-02)
 
 ### Completed this session
 - **Value Engineering stage built end-to-end** -- schema v4 migration, full analysis pipeline, PDF export, and deal view + salesroom updates all shipped.

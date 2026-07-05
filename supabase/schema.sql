@@ -168,3 +168,46 @@ alter table public.deals
 
 alter table public.briefs
   add column if not exists ve_baseline_inputs jsonb default '[]';
+
+
+-- ─── Migration v5: stakeholders ───────────────────────────────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+
+-- Prospect-side contacts mentioned across a deal's calls, with job role.
+create table public.deal_stakeholders (
+  id                   uuid        primary key default gen_random_uuid(),
+  deal_id              uuid        references public.deals(id) on delete cascade not null,
+  name                 text        not null,
+  role                 text,
+  source               text        not null default 'ai',  -- 'ai' | 'manual'
+  first_mentioned_brief_id uuid    references public.briefs(id) on delete set null,
+  created_at           timestamptz default now(),
+  updated_at           timestamptz default now()
+);
+
+-- Case-insensitive dedup: upserts match on (deal_id, lower(name)).
+create unique index deal_stakeholders_deal_id_lower_name_idx
+  on public.deal_stakeholders (deal_id, lower(name));
+
+alter table public.deal_stakeholders enable row level security;
+
+create policy "Users manage own deal stakeholders"
+  on public.deal_stakeholders for all
+  using (
+    exists (
+      select 1 from public.deals
+      where deals.id = deal_stakeholders.deal_id
+        and deals.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.deals
+      where deals.id = deal_stakeholders.deal_id
+        and deals.user_id = auth.uid()
+    )
+  );
+
+create trigger set_updated_at_deal_stakeholders
+  before update on public.deal_stakeholders
+  for each row execute function public.set_updated_at();

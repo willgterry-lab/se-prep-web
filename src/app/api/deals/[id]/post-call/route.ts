@@ -7,7 +7,9 @@ import {
   updateQuestions,
   draftPostCallEmail,
   generateNextActions,
+  extractStakeholders,
 } from "@/lib/analysis"
+import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, MeddpiccScore, Brief } from "@/types"
 
 export const maxDuration = 60
@@ -37,17 +39,18 @@ export async function POST(
 
   const product = ctx as ProductContext
 
-  // Fetch the most recent prep brief for delta computation and question continuity.
+  // Fetch the most recent prep brief for delta computation, question continuity,
+  // and cumulative scoring (its meddpicc/risks already reflect everything known so far).
   const { data: prevBriefRow } = await supabase
     .from("briefs")
-    .select("meddpicc")
+    .select("meddpicc, risks")
     .eq("deal_id", dealId)
     .eq("stage", "prep")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  const prevBrief = prevBriefRow as Pick<Brief, "meddpicc"> | null
+  const prevBrief = prevBriefRow as Pick<Brief, "meddpicc" | "risks"> | null
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -55,7 +58,12 @@ export async function POST(
         controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"))
 
       try {
-        const meddpicc = await scoreMeddpicc(transcript, product, deal.prospect_company)
+        const meddpicc = await scoreMeddpicc(
+          transcript,
+          product,
+          deal.prospect_company,
+          prevBrief?.meddpicc
+        )
         emit({ type: "meddpicc", data: meddpicc })
 
         const delta = prevBrief ? computeDelta(prevBrief.meddpicc, meddpicc) : null
@@ -63,8 +71,8 @@ export async function POST(
 
         const today = new Date().toISOString().split("T")[0]
 
-        const [risks, questionsResult, email, actions] = await Promise.all([
-          identifyRisks(transcript, meddpicc, product, deal.prospect_company).then((r) => {
+        const [risks, questionsResult, email, actions, stakeholders] = await Promise.all([
+          identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
             emit({ type: "risks", data: r })
             return r
           }),
@@ -92,6 +100,7 @@ export async function POST(
             emit({ type: "actions", data: r })
             return r
           }),
+          extractStakeholders(transcript, deal.prospect_company),
         ])
 
         const meddpiccFull: MeddpiccScore = {
@@ -123,6 +132,8 @@ export async function POST(
           controller.close()
           return
         }
+
+        await upsertStakeholders(supabase, dealId, brief.id, stakeholders)
 
         // Write next actions to deal_tasks.
         if (actions.length > 0) {

@@ -192,3 +192,19 @@ export interface DealTask {
 export interface DealWithBriefs extends Deal {
   briefs: Brief[]
 }
+
+export interface DealStakeholder {
+  id: string
+  deal_id: string
+  name: string
+  role: string | null
+  source: "ai" | "manual"
+  first_mentioned_brief_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ExtractedStakeholder {
+  name: string
+  role: string | null
+}

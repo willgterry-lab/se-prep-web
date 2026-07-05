@@ -13,6 +13,7 @@ import type {
   VeBaselineInput,
   VeSliderInputs,
   VeProposal,
+  ExtractedStakeholder,
 } from "@/types"
 
 const MEDDPICC_ELEMENTS = [
@@ -26,12 +27,32 @@ const MEDDPICC_ELEMENTS = [
   "competition",
 ] as const
 
+// AGENTS.md bans em-dashes everywhere, but models reintroduce them despite prompt
+// instructions -- strip them at the one place every AI JSON response passes through,
+// rather than patching each of the ~8 prompts that ask for it.
+export function stripEmDashes<T>(value: T): T {
+  if (typeof value === "string") {
+    return value.replace(/—/g, "-") as unknown as T
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripEmDashes) as unknown as T
+  }
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {}
+    for (const [key, val] of Object.entries(value)) {
+      result[key] = stripEmDashes(val)
+    }
+    return result as T
+  }
+  return value
+}
+
 export function parseJson<T>(raw: string): T {
   const trimmed = raw.trim()
 
   // 1. Raw JSON
   try {
-    return JSON.parse(trimmed)
+    return stripEmDashes(JSON.parse(trimmed))
   } catch {}
 
   // 2. Fenced code block -- slice from after the opening fence line to just before the
@@ -44,7 +65,7 @@ export function parseJson<T>(raw: string): T {
       const closingFence = inner.indexOf("\n```")
       if (closingFence !== -1) inner = inner.slice(0, closingFence)
       try {
-        return JSON.parse(inner.trim())
+        return stripEmDashes(JSON.parse(inner.trim()))
       } catch {}
     }
   }
@@ -59,7 +80,7 @@ export function parseJson<T>(raw: string): T {
   const end = Math.max(lastBrace, lastBracket)
   if (start !== -1 && end > start) {
     try {
-      return JSON.parse(searchIn.slice(start, end + 1))
+      return stripEmDashes(JSON.parse(searchIn.slice(start, end + 1)))
     } catch {}
   }
 
@@ -84,11 +105,30 @@ export function computeDelta(prev: MeddpiccScore, curr: MeddpiccScore): Meddpicc
   return delta
 }
 
+function formatPriorMeddpicc(prior: MeddpiccScore): string {
+  return MEDDPICC_ELEMENTS
+    .map((key) => {
+      const el = prior[key]
+      return `${key}: score ${el.score}/3 -- evidence: "${el.evidence}"`
+    })
+    .join("\n")
+}
+
 export async function scoreMeddpicc(
   notes: string,
   product: ProductContext,
-  prospect_company: string
+  prospect_company: string,
+  priorMeddpicc?: MeddpiccScore | null
 ): Promise<MeddpiccScore> {
+  const priorSection = priorMeddpicc
+    ? `
+
+Prior evidence from earlier calls on this deal (still valid unless this transcript actively contradicts it):
+${formatPriorMeddpicc(priorMeddpicc)}
+
+Rule: if this transcript does not re-mention an element, carry forward its prior score and evidence rather than treating it as unknown -- absence of re-mention is not regression. Only score an element lower than its prior score if something in THIS transcript actively contradicts or undermines the prior evidence (e.g. a champion has left, a competitor was just chosen, budget was pulled). If this transcript adds stronger evidence for an element, you may raise its score.`
+    : ""
+
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 3000,
@@ -101,7 +141,7 @@ Product being sold: ${product.company} -- ${product.one_line_value}
 Prospect company: ${prospect_company}
 
 Discovery notes:
-${notes}
+${notes}${priorSection}
 
 Score each MEDDPICC element from 0-3:
 0 = Not mentioned / no evidence
@@ -124,7 +164,7 @@ Return ONLY valid JSON with no code fences or preamble, in this exact shape:
 }
 
 Rules:
-- Evidence must be verbatim quotes from the notes, not paraphrases.
+- Evidence must be verbatim quotes from the notes, not paraphrases. If carrying forward prior evidence unchanged, keep the prior verbatim quote.
 - Gaps should be specific questions the SE should ask next.
 - Never fabricate evidence.`,
       },
@@ -315,7 +355,8 @@ export async function identifyRisks(
   transcript: string,
   meddpicc: MeddpiccScore,
   product: ProductContext,
-  prospect_company: string
+  prospect_company: string,
+  priorRisks?: RiskItem[] | null
 ): Promise<RiskItem[]> {
   const meddpiccSummary = MEDDPICC_ELEMENTS
     .map((key) => {
@@ -323,6 +364,15 @@ export async function identifyRisks(
       return `${key}: ${el.score}/3${el.gap ? ` -- gap: ${el.gap}` : ""}`
     })
     .join("\n")
+
+  const priorSection = priorRisks?.length
+    ? `
+
+Risks previously identified on this deal (from an earlier call):
+${priorRisks.map((r) => `- [${r.severity}] ${r.risk} -- evidence: "${r.evidence}"`).join("\n")}
+
+Rule: carry a previous risk forward (possibly re-worded or re-severity-rated) unless THIS transcript resolves or contradicts it -- e.g. a stakeholder previously described as unengaged is now actively participating, or a competitor concern was directly addressed. Do not silently drop a still-relevant risk just because it was not re-mentioned.`
+    : ""
 
   const message = await anthropic.messages.create({
     model: MODEL,
@@ -340,7 +390,7 @@ ${transcript}
 
 Current MEDDPICC state:
 ${meddpiccSummary}
-Overall: ${meddpicc.overall_score}/24
+Overall: ${meddpicc.overall_score}/24${priorSection}
 
 Identify 3-5 genuine deal risks -- things that are likely to stall or lose this deal.
 
@@ -408,7 +458,7 @@ Call transcript:
 ${transcript}
 
 Extract all explicit commitments, follow-up items, and next steps mentioned in the call.
-Include actions the SC committed to (owner: "SC"), actions the prospect committed to (owner: "Prospect"), and any unowned items.
+Include actions the SC committed to (owner: "SC"), actions the prospect committed to (owner: "Prospect"), actions that require both sides working together (owner: "Joint"), and any unowned items.
 
 If the transcript implies a timeline or deadline for a specific action, suggest a reminder date in YYYY-MM-DD format relative to today.
 If no date is implied, set suggested_reminder_date to null.
@@ -417,7 +467,7 @@ Return ONLY valid JSON array:
 [
   {
     "action": "description of the action",
-    "owner": "SC" | "Prospect" | null,
+    "owner": "SC" | "Prospect" | "Joint" | null,
     "suggested_reminder_date": "YYYY-MM-DD" | null
   }
 ]
@@ -475,6 +525,45 @@ Rules:
   })
 
   return parseJson<SuccessCriterion[]>(
+    message.content[0].type === "text" ? message.content[0].text : "[]"
+  )
+}
+
+export async function extractStakeholders(
+  transcript: string,
+  prospect_company: string
+): Promise<ExtractedStakeholder[]> {
+  const message = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 800,
+    messages: [
+      {
+        role: "user",
+        content: `You are an expert Solutions Consultant reviewing a customer call transcript.
+
+Prospect company: ${prospect_company}
+
+Call transcript:
+${transcript}
+
+Extract every named person from the prospect side (${prospect_company}) who is mentioned in this transcript, along with their job title or role if stated.
+
+Return ONLY valid JSON array with no code fences or preamble:
+[
+  { "name": "Full Name", "role": "Job title, or null if not stated" }
+]
+
+Rules:
+- Only include people explicitly named in the transcript on the prospect side. Do not include the SC, SC's colleagues, or people from the vendor's own company.
+- Use the exact name as it appears (or the fullest form used, e.g. prefer "Rachel Adams" over just "Rachel" if both appear).
+- Use "role" verbatim from the transcript if a title or role is stated (e.g. "VP of Engineering"). Set to null if no role is mentioned.
+- Do not fabricate names or roles.
+- Return an empty array [] if no prospect-side names are mentioned.`,
+      },
+    ],
+  })
+
+  return parseJson<ExtractedStakeholder[]>(
     message.content[0].type === "text" ? message.content[0].text : "[]"
   )
 }
@@ -609,7 +698,7 @@ ${callTypeInstructions}
     ],
   })
 
-  return message.content[0].type === "text" ? message.content[0].text : ""
+  return message.content[0].type === "text" ? stripEmDashes(message.content[0].text) : ""
 }
 
 export async function draftPrepEmail({
@@ -665,7 +754,7 @@ Rules:
     ],
   })
 
-  return message.content[0].type === "text" ? message.content[0].text : ""
+  return message.content[0].type === "text" ? stripEmDashes(message.content[0].text) : ""
 }
 
 export async function draftPostCallEmail({
@@ -716,7 +805,7 @@ Rules:
     ],
   })
 
-  return message.content[0].type === "text" ? message.content[0].text : ""
+  return message.content[0].type === "text" ? stripEmDashes(message.content[0].text) : ""
 }
 
 export async function generateVeWorkshopQuestions(
@@ -982,5 +1071,5 @@ Rules:
     ],
   })
 
-  return message.content[0].type === "text" ? message.content[0].text : ""
+  return message.content[0].type === "text" ? stripEmDashes(message.content[0].text) : ""
 }

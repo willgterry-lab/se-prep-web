@@ -9,7 +9,9 @@ import {
   updateQuestions,
   draftVeCallEmail,
   generateNextActions,
+  extractStakeholders,
 } from "@/lib/analysis"
+import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, MeddpiccScore, Brief, VeBaselineInput } from "@/types"
 
 export const maxDuration = 60
@@ -41,13 +43,13 @@ export async function POST(
 
   const { data: recentBriefs } = await supabase
     .from("briefs")
-    .select("stage, meddpicc, matched_case_studies")
+    .select("stage, meddpicc, matched_case_studies, risks")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false })
     .limit(5)
 
   const prevBrief =
-    (recentBriefs as Pick<Brief, "stage" | "meddpicc" | "matched_case_studies">[] | null)?.[0] ??
+    (recentBriefs as Pick<Brief, "stage" | "meddpicc" | "matched_case_studies" | "risks">[] | null)?.[0] ??
     null
 
   const stream = new ReadableStream({
@@ -58,7 +60,7 @@ export async function POST(
       try {
         // Phase 1: score MEDDPICC, match case studies, extract baseline in parallel
         const [meddpicc, caseStudies, baseline] = await Promise.all([
-          scoreMeddpicc(transcript, product, deal.prospect_company).then((r) => {
+          scoreMeddpicc(transcript, product, deal.prospect_company, prevBrief?.meddpicc).then((r) => {
             emit({ type: "meddpicc", data: r })
             return r
           }),
@@ -78,8 +80,8 @@ export async function POST(
         const today = new Date().toISOString().split("T")[0]
 
         // Phase 2: downstream analysis in parallel
-        const [risks, questionsResult, email, actions] = await Promise.all([
-          identifyRisks(transcript, meddpicc, product, deal.prospect_company).then((r) => {
+        const [risks, questionsResult, email, actions, stakeholders] = await Promise.all([
+          identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
             emit({ type: "risks", data: r })
             return r
           }),
@@ -107,6 +109,7 @@ export async function POST(
             emit({ type: "actions", data: r })
             return r
           }),
+          extractStakeholders(transcript, deal.prospect_company),
         ])
 
         const meddpiccFull: MeddpiccScore = {
@@ -141,6 +144,8 @@ export async function POST(
           controller.close()
           return
         }
+
+        await upsertStakeholders(supabase, dealId, brief.id, stakeholders)
 
         if (actions.length > 0) {
           const source = `ve_${today}`

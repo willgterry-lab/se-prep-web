@@ -12,7 +12,10 @@ export async function PATCH(
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { status } = await req.json() as { status: "open" | "done" }
+  const { status, reminder_at } = await req.json() as {
+    status?: "open" | "done"
+    reminder_at?: string | null
+  }
 
   // Verify the task belongs to a deal owned by this user.
   const { data: task } = await supabase
@@ -32,12 +35,18 @@ export async function PATCH(
 
   if (!deal) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
+  const update: Record<string, string | null> = {}
+  if (status !== undefined) {
+    update.status = status
+    update.completed_at = status === "done" ? new Date().toISOString() : null
+  }
+  if (reminder_at !== undefined) {
+    update.reminder_at = reminder_at
+  }
+
   const { error } = await supabase
     .from("deal_tasks")
-    .update({
-      status,
-      completed_at: status === "done" ? new Date().toISOString() : null,
-    })
+    .update(update)
     .eq("id", taskId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

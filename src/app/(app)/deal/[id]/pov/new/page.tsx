@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -101,13 +101,21 @@ function FileRow({ file, onRemove }: { file: UploadedFile; onRemove: () => void 
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+const VALID_CALL_TYPES: PovCallType[] = ["setup", "checkin", "review"]
+
 export default function PovNewPage() {
   const { id: dealId } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const callTypeParam = searchParams.get("call_type")
+  const hasCallTypeParam = VALID_CALL_TYPES.includes(callTypeParam as PovCallType)
+
   const [deal, setDeal] = useState<Deal | null>(null)
-  const [callType, setCallType] = useState<PovCallType>("setup")
+  const [callType, setCallType] = useState<PovCallType>(
+    hasCallTypeParam ? (callTypeParam as PovCallType) : "setup"
+  )
   const [recordingUrl, setRecordingUrl] = useState("")
   const [transcript, setTranscript] = useState("")
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
@@ -129,15 +137,19 @@ export default function PovNewPage() {
         if (data.deal) {
           const d = data.deal as Deal
           setDeal(d)
-          const povBriefCount = (data.briefs as { stage: string }[]).filter(
-            (b) => b.stage === "pov"
-          ).length
-          if (povBriefCount === 1) setCallType("checkin")
-          else if (povBriefCount >= 2) setCallType("review")
+          // An explicit ?call_type= from the deal view (e.g. "Log check-in call")
+          // takes priority over auto-detection from existing brief count.
+          if (!hasCallTypeParam) {
+            const povBriefCount = (data.briefs as { stage: string }[]).filter(
+              (b) => b.stage === "pov"
+            ).length
+            if (povBriefCount === 1) setCallType("checkin")
+            else if (povBriefCount >= 2) setCallType("review")
+          }
         }
       })
       .catch(() => {})
-  }, [dealId])
+  }, [dealId, hasCallTypeParam])
 
   const existingCriteria = deal?.success_criteria ?? []
   const isFirstPov = existingCriteria.length === 0

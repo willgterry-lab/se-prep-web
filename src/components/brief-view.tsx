@@ -312,8 +312,8 @@ export function BriefView({ brief, continueHref }: { brief: Brief; continueHref?
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{brief.prospect_name}</h1>
-          <p className="text-gray-500">{brief.prospect_company}</p>
+          <h1 className="text-2xl font-bold">{brief.prospect_company}</h1>
+          <p className="text-gray-500">{brief.prospect_name}</p>
           <p className="text-xs text-gray-400 mt-1">
             {new Date(brief.created_at).toLocaleDateString("en-GB")}
           </p>

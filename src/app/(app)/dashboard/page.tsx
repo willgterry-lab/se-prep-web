@@ -115,9 +115,9 @@ export default async function DashboardPage() {
                   <Card className="hover:border-[#1ED760] transition-colors cursor-pointer">
                     <CardContent className="py-4 flex items-center justify-between">
                       <div>
-                        <p className="font-medium">{deal.prospect_name}</p>
+                        <p className="font-medium">{deal.prospect_company}</p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <p className="text-sm text-gray-500">{deal.prospect_company}</p>
+                          <p className="text-sm text-gray-500">{deal.prospect_name}</p>
                           <Badge variant="outline" className="text-[10px] py-0">
                             {STAGE_LABELS[deal.stage]}
                           </Badge>

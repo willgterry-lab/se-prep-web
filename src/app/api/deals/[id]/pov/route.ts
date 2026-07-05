@@ -9,7 +9,9 @@ import {
   updateQuestions,
   draftPovCallEmail,
   generateNextActions,
+  extractStakeholders,
 } from "@/lib/analysis"
+import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, MeddpiccScore, Brief, SuccessCriterion } from "@/types"
 
 export const maxDuration = 60
@@ -42,15 +44,16 @@ export async function POST(
   let criteriaToUse: SuccessCriterion[] = (deal.success_criteria as SuccessCriterion[]) ?? []
   const needsExtraction = criteriaToUse.length === 0
 
-  // Fetch the most recent brief for delta + question continuity + case study inheritance.
+  // Fetch the most recent brief for delta + question continuity + case study inheritance
+  // + cumulative scoring (its meddpicc/risks already reflect everything known so far).
   const { data: recentBriefs } = await supabase
     .from("briefs")
-    .select("stage, meddpicc, matched_case_studies")
+    .select("stage, meddpicc, matched_case_studies, risks")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false })
     .limit(5)
 
-  const prevBrief = (recentBriefs as Pick<Brief, "stage" | "meddpicc" | "matched_case_studies">[] | null)?.[0] ?? null
+  const prevBrief = (recentBriefs as Pick<Brief, "stage" | "meddpicc" | "matched_case_studies" | "risks">[] | null)?.[0] ?? null
   const inheritedCaseStudies =
     (recentBriefs as Pick<Brief, "matched_case_studies">[] | null)?.find(
       (b) => (b.matched_case_studies as unknown[])?.length > 0
@@ -64,7 +67,7 @@ export async function POST(
       try {
         // Run scoreMeddpicc and (on first POV call) extractSuccessCriteria in parallel.
         const [meddpicc, resolvedCriteria] = await Promise.all([
-          scoreMeddpicc(transcript, product, deal.prospect_company).then((r) => {
+          scoreMeddpicc(transcript, product, deal.prospect_company, prevBrief?.meddpicc).then((r) => {
             emit({ type: "meddpicc", data: r })
             return r
           }),
@@ -95,12 +98,12 @@ export async function POST(
 
         const today = new Date().toISOString().split("T")[0]
 
-        const [povAssessment, risks, questionsResult, email, actions] = await Promise.all([
+        const [povAssessment, risks, questionsResult, email, actions, stakeholders] = await Promise.all([
           assessPovCriteria(transcript, criteriaToUse, product, deal.prospect_company).then((r) => {
             emit({ type: "pov_assessment", data: r })
             return r
           }),
-          identifyRisks(transcript, meddpicc, product, deal.prospect_company).then((r) => {
+          identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
             emit({ type: "risks", data: r })
             return r
           }),
@@ -130,6 +133,7 @@ export async function POST(
             emit({ type: "actions", data: r })
             return r
           }),
+          extractStakeholders(transcript, deal.prospect_company),
         ])
 
         const meddpiccFull: MeddpiccScore = {
@@ -163,6 +167,8 @@ export async function POST(
           controller.close()
           return
         }
+
+        await upsertStakeholders(supabase, dealId, brief.id, stakeholders)
 
         if (actions.length > 0) {
           const source = `pov_${today}`

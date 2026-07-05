@@ -5,8 +5,11 @@ import Link from "next/link"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { computeRiskScore } from "@/lib/risk-score"
 import { cn } from "@/lib/utils"
-import type { Deal, Brief, DealTask, MeddpiccDelta, RiskItem, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus, VeBaselineInput, VeSliderInputs, VeProposal, VeConfidence } from "@/types"
+import type { Deal, Brief, DealTask, MeddpiccDelta, MeddpiccScore, RiskItem, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus, VeBaselineInput, VeSliderInputs, VeProposal, VeConfidence, DealStakeholder, SuggestedQuestions } from "@/types"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -117,22 +120,73 @@ function DeltaCard({ delta }: { delta: MeddpiccDelta }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="divide-y">
-        {MEDDPICC_ELEMENTS.map((key) => {
-          const el = delta[key as keyof MeddpiccDelta] as { prev: number; curr: number; change: number } | undefined
-          if (!el || typeof el !== "object" || !("prev" in el)) return null
-          return (
-            <div key={key} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between">
-              <span className="text-sm text-gray-700 w-36 shrink-0">{MEDDPICC_LABELS[key]}</span>
-              <div className="flex items-center gap-3">
-                <ScorePip score={el.prev} />
-                <span className="text-gray-300 text-xs">to</span>
-                <ScorePip score={el.curr} />
-                <ChangeChip change={el.change} />
+      <CardContent>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-y-1">
+          {MEDDPICC_ELEMENTS.map((key) => {
+            const el = delta[key as keyof MeddpiccDelta] as { prev: number; curr: number; change: number } | undefined
+            if (!el || typeof el !== "object" || !("prev" in el)) return null
+            return (
+              <div key={key} className="contents">
+                <span className="text-sm text-gray-700 py-2 border-t first:border-t-0 flex items-center">
+                  {MEDDPICC_LABELS[key]}
+                </span>
+                <div className="flex items-center gap-3 py-2 border-t first:border-t-0 justify-end">
+                  <ScorePip score={el.prev} />
+                  <span className="text-gray-300 text-xs">to</span>
+                  <ScorePip score={el.curr} />
+                  <span className="w-14 text-right">
+                    <ChangeChip change={el.change} />
+                  </span>
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── MEDDPICC grid card ───────────────────────────────────────────────────────
+
+function MeddpiccGridCard({ meddpicc }: { meddpicc: MeddpiccScore }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>MEDDPICC breakdown</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-y-1">
+          {MEDDPICC_ELEMENTS.map((key) => {
+            const el = meddpicc[key as keyof MeddpiccScore] as { score: number; evidence: string; gap: string }
+            const isExpanded = expanded === key
+            return (
+              <div key={key} className="contents">
+                <button
+                  type="button"
+                  onClick={() => setExpanded(isExpanded ? null : key)}
+                  className="text-sm text-gray-700 py-2 border-t first:border-t-0 flex items-center text-left hover:text-gray-900"
+                >
+                  {MEDDPICC_LABELS[key]}
+                </button>
+                <div className="flex items-center gap-2 py-2 border-t first:border-t-0 justify-end">
+                  <ScorePip score={el.score} />
+                  <span className="text-xs text-gray-400 w-8 text-right">{el.score}/3</span>
+                </div>
+                {isExpanded && (
+                  <div className="col-span-2 pb-3 -mt-1 text-xs text-gray-500 space-y-1">
+                    {el.evidence && el.evidence !== "none" && (
+                      <p>&ldquo;{el.evidence}&rdquo;</p>
+                    )}
+                    {el.gap && <p className="text-amber-600">Gap: {el.gap}</p>}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </CardContent>
     </Card>
   )
@@ -140,16 +194,30 @@ function DeltaCard({ delta }: { delta: MeddpiccDelta }) {
 
 // ─── Risk card ────────────────────────────────────────────────────────────────
 
+function riskScoreColor(score: number) {
+  if (score >= 60) return "bg-red-100 text-red-600"
+  if (score >= 30) return "bg-amber-100 text-amber-700"
+  return "bg-[#1ED760]/15 text-[#0A6630]"
+}
+
 function RiskCard({ risks }: { risks: RiskItem[] }) {
   if (!risks.length) return null
   const sorted = [...risks].sort((a, b) => {
     const order = { high: 0, medium: 1, low: 2 }
     return order[a.severity] - order[b.severity]
   })
+  const riskScore = computeRiskScore(risks)
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Risk areas</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>Risk areas</CardTitle>
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${riskScoreColor(riskScore)}`}
+          >
+            Risk score: {riskScore}/100
+          </span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {sorted.map((risk, i) => (
@@ -170,11 +238,85 @@ function RiskCard({ risks }: { risks: RiskItem[] }) {
   )
 }
 
+// ─── Questions card ───────────────────────────────────────────────────────────
+
+const QUESTION_BUCKET_LABELS: Record<keyof SuggestedQuestions, string> = {
+  sc_intro: "Intro / rapport",
+  discovery: "Discovery",
+  technical: "Technical",
+}
+
+function QuestionsCard({
+  suggested,
+  answered,
+}: {
+  suggested?: SuggestedQuestions
+  answered?: SuggestedQuestions
+}) {
+  const buckets = (Object.keys(QUESTION_BUCKET_LABELS) as Array<keyof SuggestedQuestions>).filter(
+    (key) => (suggested?.[key]?.length ?? 0) > 0 || (answered?.[key]?.length ?? 0) > 0
+  )
+
+  if (!buckets.length) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Suggested questions</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {buckets.map((key) => (
+          <div key={key} className="space-y-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+              {QUESTION_BUCKET_LABELS[key]}
+            </p>
+            <ul className="space-y-1">
+              {(suggested?.[key] ?? []).map((q, i) => (
+                <li key={`open-${i}`} className="text-sm text-gray-800 leading-snug">
+                  {q}
+                </li>
+              ))}
+              {(answered?.[key] ?? []).map((q, i) => (
+                <li key={`answered-${i}`} className="text-sm text-gray-400 line-through leading-snug">
+                  {q}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Task list ────────────────────────────────────────────────────────────────
+
+const TASK_TABS = ["All", "SC", "Prospect", "Joint"] as const
+type TaskTab = (typeof TASK_TABS)[number]
+
+const TASK_STAGE_ORDER = ["Post-call", "POV", "Value Engineering", "Manual", "Other"]
+
+function stageFromSource(source: string): string {
+  if (source.startsWith("post_call_")) return "Post-call"
+  if (source.startsWith("pov_")) return "POV"
+  if (source.startsWith("ve_")) return "Value Engineering"
+  if (source === "manual") return "Manual"
+  return "Other"
+}
+
+function reminderToDateInputValue(reminder_at: string | null) {
+  return reminder_at ? new Date(reminder_at).toISOString().slice(0, 10) : ""
+}
 
 function TaskList({ dealId, initialTasks }: { dealId: string; initialTasks: DealTask[] }) {
   const [tasks, setTasks] = useState(initialTasks)
   const [pending, setPending] = useState<Set<string>>(new Set())
+  const [tab, setTab] = useState<TaskTab>("All")
+  const [adding, setAdding] = useState(false)
+  const [newDescription, setNewDescription] = useState("")
+  const [newOwner, setNewOwner] = useState<"SC" | "Prospect" | "Joint" | "">("")
+  const [newDate, setNewDate] = useState("")
+  const [saving, setSaving] = useState(false)
 
   const toggle = useCallback(
     async (taskId: string, current: TaskStatus) => {
@@ -206,44 +348,159 @@ function TaskList({ dealId, initialTasks }: { dealId: string; initialTasks: Deal
     [dealId]
   )
 
-  const now = new Date()
-  const open = tasks.filter((t) => t.status === "open")
-  const done = tasks.filter((t) => t.status === "done")
+  const changeDueDate = useCallback(
+    async (taskId: string, dateValue: string) => {
+      const reminder_at = dateValue ? new Date(dateValue + "T09:00:00").toISOString() : null
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, reminder_at } : t))
+      )
+      await fetch(`/api/deals/${dealId}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reminder_at }),
+      })
+    },
+    [dealId]
+  )
 
-  if (!tasks.length) return null
+  async function addTask() {
+    if (!newDescription.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: newDescription,
+          owner: newOwner || null,
+          reminder_at: newDate ? new Date(newDate + "T09:00:00").toISOString() : null,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setTasks((prev) => [...prev, data.task])
+        setNewDescription("")
+        setNewOwner("")
+        setNewDate("")
+        setAdding(false)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const now = new Date()
+  const filtered = tab === "All" ? tasks : tasks.filter((t) => t.owner === tab)
+  const open = filtered.filter((t) => t.status === "open")
+  const done = filtered.filter((t) => t.status === "done")
+
+  const openByStage = new Map<string, DealTask[]>()
+  for (const task of open) {
+    const stage = stageFromSource(task.source)
+    openByStage.set(stage, [...(openByStage.get(stage) ?? []), task])
+  }
+  const orderedStages = TASK_STAGE_ORDER.filter((s) => openByStage.has(s))
+
+  if (!tasks.length && !adding) return null
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Next actions</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-1">
-        {open.map((task) => {
-          const overdue = task.reminder_at && new Date(task.reminder_at) < now
-          return (
-            <TaskRow
-              key={task.id}
-              task={task}
-              overdue={!!overdue}
-              isPending={pending.has(task.id)}
-              onToggle={toggle}
+      <CardContent className="space-y-3">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as TaskTab)}>
+          <TabsList>
+            {TASK_TABS.map((t) => (
+              <TabsTrigger key={t} value={t}>
+                {t}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent value={tab} className="space-y-1 mt-3">
+            {orderedStages.map((stage) => (
+              <div key={stage} className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 pt-1">
+                  {stage}
+                </p>
+                {openByStage.get(stage)!.map((task) => {
+                  const overdue = task.reminder_at && new Date(task.reminder_at) < now
+                  return (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      overdue={!!overdue}
+                      isPending={pending.has(task.id)}
+                      onToggle={toggle}
+                      onDateChange={changeDueDate}
+                    />
+                  )
+                })}
+              </div>
+            ))}
+
+            {done.length > 0 && (
+              <div className="pt-2 pb-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Completed</p>
+              </div>
+            )}
+            {done.map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                overdue={false}
+                isPending={pending.has(task.id)}
+                onToggle={toggle}
+                onDateChange={changeDueDate}
+              />
+            ))}
+
+            {!open.length && !done.length && (
+              <p className="text-sm text-gray-400 py-2">No actions in this view.</p>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {adding ? (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
+            <Input
+              placeholder="Action description"
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              className="flex-1 min-w-[160px]"
             />
-          )
-        })}
-        {done.length > 0 && open.length > 0 && (
-          <div className="pt-2 pb-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Completed</p>
+            <select
+              value={newOwner}
+              onChange={(e) => setNewOwner(e.target.value as "SC" | "Prospect" | "Joint" | "")}
+              className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+            >
+              <option value="">No owner</option>
+              <option value="SC">SC</option>
+              <option value="Prospect">Prospect</option>
+              <option value="Joint">Joint</option>
+            </select>
+            <input
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+            />
+            <Button size="sm" onClick={addTask} disabled={saving || !newDescription.trim()}>
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
           </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2"
+          >
+            + Add action
+          </button>
         )}
-        {done.map((task) => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            overdue={false}
-            isPending={pending.has(task.id)}
-            onToggle={toggle}
-          />
-        ))}
       </CardContent>
     </Card>
   )
@@ -254,15 +511,17 @@ function TaskRow({
   overdue,
   isPending,
   onToggle,
+  onDateChange,
 }: {
   task: DealTask
   overdue: boolean
   isPending: boolean
   onToggle: (id: string, status: TaskStatus) => void
+  onDateChange: (id: string, dateValue: string) => void
 }) {
   return (
-    <label
-      className={`flex items-start gap-3 rounded-md px-2 py-2 cursor-pointer transition-colors hover:bg-gray-50 ${isPending ? "opacity-50" : ""}`}
+    <div
+      className={`flex items-start gap-3 rounded-md px-2 py-2 transition-colors hover:bg-gray-50 ${isPending ? "opacity-50" : ""}`}
     >
       <input
         type="checkbox"
@@ -286,14 +545,71 @@ function TaskRow({
               Overdue
             </span>
           )}
-          {task.reminder_at && !overdue && task.status === "open" && (
-            <span className="text-[10px] text-gray-400">
-              Due {new Date(task.reminder_at).toLocaleDateString("en-GB")}
-            </span>
+          {task.status === "open" && (
+            <input
+              type="date"
+              value={reminderToDateInputValue(task.reminder_at)}
+              onChange={(e) => onDateChange(task.id, e.target.value)}
+              className="text-[11px] text-gray-500 border-none bg-transparent px-0 h-5 focus:ring-0 focus:outline-none"
+            />
           )}
         </div>
       </div>
-    </label>
+    </div>
+  )
+}
+
+// ─── Lifecycle progress bar ──────────────────────────────────────────────────
+
+const DEAL_STAGES: Array<Deal["stage"]> = ["prep", "post_call", "pov", "value_engineering"]
+
+function DealProgressBar({ stage }: { stage: Deal["stage"] }) {
+  const currentIndex = DEAL_STAGES.indexOf(stage)
+
+  return (
+    <div className="flex items-start">
+      {DEAL_STAGES.flatMap((s, i) => {
+        const isDone = i < currentIndex
+        const isCurrent = i === currentIndex
+        const items = [
+          <div key={s} className="flex flex-col items-center gap-1.5">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
+                isDone
+                  ? "bg-[#1ED760] border-[#1ED760]"
+                  : isCurrent
+                  ? "border-[#1ED760] bg-white"
+                  : "border-gray-200 bg-white"
+              }`}
+            >
+              {isDone ? (
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <span className={`w-2 h-2 rounded-full ${isCurrent ? "bg-[#1ED760]" : "bg-gray-200"}`} />
+              )}
+            </div>
+            <span
+              className={`text-xs text-center leading-tight max-w-[72px] ${
+                isDone ? "font-medium text-gray-800" : isCurrent ? "font-medium text-[#0A192F]" : "text-gray-300"
+              }`}
+            >
+              {STAGE_LABELS[s]}
+            </span>
+          </div>,
+        ]
+        if (i < DEAL_STAGES.length - 1) {
+          items.push(
+            <div
+              key={`c${i}`}
+              className={`flex-1 h-px mt-4 mx-1 ${i < currentIndex ? "bg-[#1ED760]" : "bg-gray-200"}`}
+            />
+          )
+        }
+        return items
+      })}
+    </div>
   )
 }
 
@@ -308,6 +624,7 @@ function PovStageCard({ dealId, povBriefCount }: { dealId: string; povBriefCount
       : povBriefCount === 2
       ? "Log final review"
       : null
+  const nextCallType = povBriefCount === 1 ? "checkin" : povBriefCount === 2 ? "review" : null
 
   return (
     <Card>
@@ -361,7 +678,7 @@ function PovStageCard({ dealId, povBriefCount }: { dealId: string; povBriefCount
 
         {nextLabel && (
           <Link
-            href={`/deal/${dealId}/pov/new`}
+            href={`/deal/${dealId}/pov/new${nextCallType ? `?call_type=${nextCallType}` : ""}`}
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
             {nextLabel}
@@ -374,15 +691,56 @@ function PovStageCard({ dealId, povBriefCount }: { dealId: string; povBriefCount
 
 // ─── POV progress card ────────────────────────────────────────────────────────
 
+const POV_STATUS_OPTIONS: PovCriterionStatus[] = ["met", "in_progress", "not_met"]
+
 function PovProgressCard({
+  dealId,
+  briefId,
   criteria,
-  assessment,
+  assessment: initialAssessment,
 }: {
+  dealId: string
+  briefId: string
   criteria: SuccessCriterion[]
   assessment: PovAssessment[]
 }) {
+  const [assessment, setAssessment] = useState(initialAssessment)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [draftStatus, setDraftStatus] = useState<PovCriterionStatus>("not_met")
+  const [draftNote, setDraftNote] = useState("")
+  const [saving, setSaving] = useState(false)
+
   const assessmentMap = new Map(assessment.map((a) => [a.criterion_id, a]))
   const metCount = assessment.filter((a) => a.status === "met").length
+
+  function startEdit(criterionId: number, current: PovAssessment | undefined) {
+    setEditingId(criterionId)
+    setDraftStatus(current?.status ?? "not_met")
+    setDraftNote(current?.notes ?? "")
+  }
+
+  async function saveEdit(criterionId: number) {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/pov-assessment`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brief_id: briefId,
+          criterion_id: criterionId,
+          status: draftStatus,
+          note: draftNote || null,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setAssessment(data.pov_assessment)
+        setEditingId(null)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Card>
@@ -398,20 +756,188 @@ function PovProgressCard({
         {criteria.map((c) => {
           const a = assessmentMap.get(c.id)
           const status: PovCriterionStatus = a?.status ?? "not_met"
+          const isEditing = editingId === c.id
           return (
             <div key={c.id} className="py-3 first:pt-0 last:pb-0 space-y-1">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm text-gray-800 leading-snug">{c.description}</p>
-                <PovStatusBadge status={status} />
+                <div className="flex items-center gap-2 shrink-0">
+                  <PovStatusBadge status={status} />
+                  {!isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => startEdit(c.id, a)}
+                      className="text-xs text-gray-400 hover:text-gray-700"
+                      aria-label={`Edit status for ${c.description}`}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
               </div>
               {a?.evidence && a.evidence !== "Not evidenced on this call" && (
                 <p className="text-xs text-gray-500 italic">
                   &ldquo;{a.evidence}&rdquo;
                 </p>
               )}
+              {a?.notes && !isEditing && (
+                <p className="text-xs text-gray-500">Note: {a.notes}</p>
+              )}
+              {isEditing && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex gap-2">
+                    {POV_STATUS_OPTIONS.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setDraftStatus(opt)}
+                        className={`text-xs px-2 py-1 rounded-full border ${
+                          draftStatus === opt
+                            ? "border-[#1ED760] bg-[#1ED760]/10 text-[#0A6630] font-medium"
+                            : "border-gray-200 text-gray-500"
+                        }`}
+                      >
+                        {opt.replace("_", " ")}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={draftNote}
+                    onChange={(e) => setDraftNote(e.target.value)}
+                    placeholder="Add a note explaining this manual status..."
+                    className="w-full text-sm border rounded-md px-2 py-1.5 text-gray-700"
+                    rows={2}
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => saveEdit(c.id)} disabled={saving}>
+                      Save
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Stakeholders card ────────────────────────────────────────────────────────
+
+function StakeholdersCard({
+  dealId,
+  initialStakeholders,
+}: {
+  dealId: string
+  initialStakeholders: DealStakeholder[]
+}) {
+  const [stakeholders, setStakeholders] = useState(initialStakeholders)
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState("")
+  const [newRole, setNewRole] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  async function addStakeholder() {
+    if (!newName.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/stakeholders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName, role: newRole || null }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setStakeholders((prev) => [...prev, data.stakeholder])
+        setNewName("")
+        setNewRole("")
+        setAdding(false)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function removeStakeholder(id: string) {
+    setStakeholders((prev) => prev.filter((s) => s.id !== id))
+    await fetch(`/api/deals/${dealId}/stakeholders/${id}`, { method: "DELETE" })
+  }
+
+  if (!stakeholders.length && !adding) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Stakeholders</CardTitle>
+          <CardDescription className="mt-1">
+            No stakeholders identified yet -- they&apos;ll be picked up automatically from call transcripts, or add one manually.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            + Add stakeholder
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Stakeholders</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {stakeholders.map((s) => (
+          <div key={s.id} className="flex items-center justify-between text-sm">
+            <div>
+              <span className="font-medium">{s.name}</span>
+              {s.role && <span className="text-gray-500"> -- {s.role}</span>}
+            </div>
+            <button
+              type="button"
+              onClick={() => removeStakeholder(s.id)}
+              className="text-xs text-gray-400 hover:text-red-500"
+              aria-label={`Remove ${s.name}`}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+
+        {adding ? (
+          <div className="flex items-center gap-2 pt-2 border-t">
+            <Input
+              placeholder="Name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="max-w-[160px]"
+            />
+            <Input
+              placeholder="Role (optional)"
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value)}
+              className="max-w-[180px]"
+            />
+            <Button size="sm" onClick={addStakeholder} disabled={saving || !newName.trim()}>
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2"
+          >
+            + Add stakeholder
+          </button>
+        )}
       </CardContent>
     </Card>
   )
@@ -488,14 +1014,27 @@ function ShareSection({ dealId, initialToken }: { dealId: string; initialToken: 
                 {copied ? "Copied!" : "Copy"}
               </Button>
             </div>
-            <button
-              type="button"
-              onClick={revoke}
-              disabled={loading}
-              className="text-xs text-red-500 hover:text-red-700 underline underline-offset-2 disabled:opacity-50"
-            >
-              Revoke link
-            </button>
+            <div className="flex items-center gap-3">
+              <a
+                href={shareUrl || undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  !shareUrl && "pointer-events-none opacity-50"
+                )}
+              >
+                Preview as prospect
+              </a>
+              <button
+                type="button"
+                onClick={revoke}
+                disabled={loading}
+                className="text-xs text-red-500 hover:text-red-700 underline underline-offset-2 disabled:opacity-50"
+              >
+                Revoke link
+              </button>
+            </div>
           </div>
         ) : (
           <Button onClick={generate} disabled={loading}>
@@ -760,10 +1299,12 @@ export function DealView({
   deal,
   briefs,
   tasks,
+  stakeholders,
 }: {
   deal: Deal
   briefs: Brief[]
   tasks: DealTask[]
+  stakeholders: DealStakeholder[]
 }) {
   const latestBrief = briefs.length ? briefs[briefs.length - 1] : null
   const postCallBrief = briefs.find((b) => b.stage === "post_call") ?? null
@@ -831,12 +1372,12 @@ export function DealView({
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold">{deal.prospect_name}</h1>
+            <h1 className="text-2xl font-bold">{deal.prospect_company}</h1>
             <Badge variant="outline" className="text-xs">
               {STAGE_LABELS[deal.stage]}
             </Badge>
           </div>
-          <p className="text-gray-500">{deal.prospect_company}</p>
+          <p className="text-gray-500">{deal.prospect_name}</p>
           <p className="text-xs text-gray-400 mt-1">
             Started {new Date(deal.created_at).toLocaleDateString("en-GB")}
           </p>
@@ -854,63 +1395,11 @@ export function DealView({
         )}
       </div>
 
-      {/* Score delta */}
-      {postCallBrief?.delta && <DeltaCard delta={postCallBrief.delta} />}
+      {/* Lifecycle progress */}
+      <DealProgressBar stage={deal.stage} />
 
-      {/* Risk areas */}
-      {postCallBrief?.risks && postCallBrief.risks.length > 0 && (
-        <RiskCard risks={postCallBrief.risks} />
-      )}
-
-      {/* POV stage progress */}
-      {hasPov && (
-        <PovStageCard dealId={deal.id} povBriefCount={povBriefCount} />
-      )}
-
-      {/* POV criteria progress */}
-      {hasPov && latestPovBrief && deal.success_criteria?.length > 0 && (
-        <PovProgressCard
-          criteria={deal.success_criteria}
-          assessment={latestPovBrief.pov_assessment ?? []}
-        />
-      )}
-
-      {/* Salesroom share */}
-      {hasPov && (
-        <ShareSection dealId={deal.id} initialToken={deal.share_token} />
-      )}
-
-      {/* VE baseline + sliders */}
-      {hasVe && (
-        <VeBaselineCard
-          dealId={deal.id}
-          baselines={aggregatedBaselines}
-          sliders={sliders}
-          onSlidersChange={handleSliderChange}
-          onGenerate={handleGenerateProposal}
-          generating={generating}
-          hasProposal={!!veProposal}
-        />
-      )}
-
-      {generateError && (
-        <p className="text-sm text-red-600">{generateError}</p>
-      )}
-
-      {/* VE proposal */}
-      {veProposal && <VeProposalCard proposal={veProposal} />}
-
-      {/* VE publish */}
-      {hasVe && (
-        <VePublishSection
-          dealId={deal.id}
-          initialPublished={deal.ve_published}
-          hasProposal={!!veProposal}
-        />
-      )}
-
-      {/* Task list */}
-      {tasks.length > 0 && <TaskList dealId={deal.id} initialTasks={tasks} />}
+      {/* Stakeholders */}
+      <StakeholdersCard dealId={deal.id} initialStakeholders={stakeholders} />
 
       {/* Post-call CTA */}
       {!hasPostCall && briefs.length > 0 && (
@@ -957,37 +1446,119 @@ export function DealView({
         </Card>
       )}
 
-      {/* Briefs timeline */}
-      {briefs.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Briefs</CardTitle>
-          </CardHeader>
-          <CardContent className="divide-y">
-            {[...briefs].reverse().map((brief) => (
-              <Link key={brief.id} href={`/brief/${brief.id}`} className="block">
-                <div className="py-3 first:pt-0 last:pb-0 flex items-center justify-between hover:bg-gray-50 -mx-2 px-2 rounded transition-colors">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-xs capitalize">
-                      {brief.stage.replace("_", " ")}
-                    </Badge>
-                    <p className="text-sm text-gray-700">
-                      {new Date(brief.created_at).toLocaleDateString("en-GB")}
-                    </p>
-                  </div>
-                  {brief.meddpicc && (
-                    <span
-                      className={`text-xs font-semibold ${brief.meddpicc.overall_score >= 16 ? "text-[#1ED760]" : brief.meddpicc.overall_score >= 8 ? "text-amber-500" : "text-red-500"}`}
-                    >
-                      {toDisplayScore(brief.meddpicc.overall_score)}/100
-                    </span>
-                  )}
-                </div>
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="risks">Risks</TabsTrigger>
+          <TabsTrigger value="pov">POV</TabsTrigger>
+          <TabsTrigger value="actions">Actions</TabsTrigger>
+          <TabsTrigger value="ve">VE</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-4">
+          {latestBrief?.meddpicc && <MeddpiccGridCard meddpicc={latestBrief.meddpicc} />}
+          {latestBrief?.delta && <DeltaCard delta={latestBrief.delta} />}
+          {latestBrief?.meddpicc && (
+            <QuestionsCard
+              suggested={latestBrief.meddpicc.suggested_questions}
+              answered={latestBrief.meddpicc.answered_questions}
+            />
+          )}
+
+          {briefs.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Briefs</CardTitle>
+              </CardHeader>
+              <CardContent className="divide-y">
+                {[...briefs].reverse().map((brief) => (
+                  <Link key={brief.id} href={`/brief/${brief.id}`} className="block">
+                    <div className="py-3 first:pt-0 last:pb-0 flex items-center justify-between hover:bg-gray-50 -mx-2 px-2 rounded transition-colors">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {brief.stage.replace("_", " ")}
+                        </Badge>
+                        <p className="text-sm text-gray-700">
+                          {new Date(brief.created_at).toLocaleDateString("en-GB")}
+                        </p>
+                      </div>
+                      {brief.meddpicc && (
+                        <span
+                          className={`text-xs font-semibold ${brief.meddpicc.overall_score >= 16 ? "text-[#1ED760]" : brief.meddpicc.overall_score >= 8 ? "text-amber-500" : "text-red-500"}`}
+                        >
+                          {toDisplayScore(brief.meddpicc.overall_score)}/100
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          ) : (
+            <p className="text-sm text-gray-400 py-4">No briefs yet.</p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="risks" className="space-y-6 mt-4">
+          {latestBrief?.risks && latestBrief.risks.length > 0 ? (
+            <RiskCard risks={latestBrief.risks} />
+          ) : (
+            <p className="text-sm text-gray-400 py-4">No risks identified yet.</p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="pov" className="space-y-6 mt-4">
+          {hasPov ? (
+            <>
+              <PovStageCard dealId={deal.id} povBriefCount={povBriefCount} />
+              {latestPovBrief && deal.success_criteria?.length > 0 && (
+                <PovProgressCard
+                  dealId={deal.id}
+                  briefId={latestPovBrief.id}
+                  criteria={deal.success_criteria}
+                  assessment={latestPovBrief.pov_assessment ?? []}
+                />
+              )}
+              <ShareSection dealId={deal.id} initialToken={deal.share_token} />
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 py-4">POV has not started yet.</p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="actions" className="mt-4">
+          {tasks.length > 0 ? (
+            <TaskList dealId={deal.id} initialTasks={tasks} />
+          ) : (
+            <p className="text-sm text-gray-400 py-4">No next actions yet.</p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="ve" className="space-y-6 mt-4">
+          {hasVe ? (
+            <>
+              <VeBaselineCard
+                dealId={deal.id}
+                baselines={aggregatedBaselines}
+                sliders={sliders}
+                onSlidersChange={handleSliderChange}
+                onGenerate={handleGenerateProposal}
+                generating={generating}
+                hasProposal={!!veProposal}
+              />
+              {generateError && <p className="text-sm text-red-600">{generateError}</p>}
+              {veProposal && <VeProposalCard proposal={veProposal} />}
+              <VePublishSection
+                dealId={deal.id}
+                initialPublished={deal.ve_published}
+                hasProposal={!!veProposal}
+              />
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 py-4">Value Engineering has not started yet.</p>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Footer */}
       <div className="pb-8">

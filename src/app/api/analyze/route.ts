@@ -5,7 +5,9 @@ import {
   matchCaseStudies,
   generateQuestions,
   draftPrepEmail,
+  extractStakeholders,
 } from "@/lib/analysis"
+import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, MeddpiccScore, MatchedCaseStudy } from "@/types"
 
 export const maxDuration = 60
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
           }),
         ])
 
-        const [email, questions] = await Promise.all([
+        const [email, questions, stakeholders] = await Promise.all([
           draftPrepEmail({
             prospect_name,
             prospect_company,
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
             sc_name: scName,
           }),
           generateQuestions(discovery_notes, meddpicc, product),
+          extractStakeholders(discovery_notes, prospect_company),
         ])
         emit({ type: "email", data: email })
 
@@ -113,6 +116,7 @@ export async function POST(req: NextRequest) {
         if (error) {
           emit({ type: "error", message: error.message })
         } else {
+          await upsertStakeholders(supabase, dealId, brief.id, stakeholders)
           emit({ type: "done", data: { brief_id: brief.id, deal_id: dealId } })
         }
       } catch (e) {
