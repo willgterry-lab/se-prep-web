@@ -38,7 +38,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ text: text.trim(), filename: file.name })
-  } catch {
-    return NextResponse.json({ error: `Could not extract text from ${file.name}.` }, { status: 500 })
+  } catch (err) {
+    console.error(`extract-text failed for ${file.name}:`, err)
+    const detail = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: `Could not extract text from ${file.name}: ${detail}` }, { status: 500 })
   }
 }
