@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import mammoth from "mammoth"
+import { createRequire } from "module"
 
 export const maxDuration = 30
 
@@ -15,7 +16,11 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
   if (typeof g.DOMMatrix === "undefined") g.DOMMatrix = class DOMMatrix {}
   if (typeof g.Path2D === "undefined") g.Path2D = class Path2D {}
 
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  // pdfjs-dist resolves its worker via a dynamic path internally, which Turbopack's
+  // file tracer doesn't pick up for the deployed function. Resolving it ourselves
+  // with a literal specifier makes it a traceable reference.
+  GlobalWorkerOptions.workerSrc = createRequire(import.meta.url).resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")
 
   const pdf = await getDocument({
     data: new Uint8Array(buffer),
