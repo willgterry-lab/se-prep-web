@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import mammoth from "mammoth"
-import { createRequire } from "module"
+import * as pdfjsWorker from "pdfjs-dist/legacy/build/pdf.worker.mjs"
 
 export const maxDuration = 30
 
@@ -9,18 +9,19 @@ export const maxDuration = 30
 // path (via the optional, native @napi-rs/canvas dependency). We only ever call
 // getTextContent, never render, so empty stubs are enough and avoid depending on
 // a native binary being available for whatever platform this runs on.
-type GlobalWithDomStubs = { DOMMatrix?: unknown; Path2D?: unknown }
+type GlobalWithPdfjsStubs = { DOMMatrix?: unknown; Path2D?: unknown; pdfjsWorker?: unknown }
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const g = globalThis as unknown as GlobalWithDomStubs
+  const g = globalThis as unknown as GlobalWithPdfjsStubs
   if (typeof g.DOMMatrix === "undefined") g.DOMMatrix = class DOMMatrix {}
   if (typeof g.Path2D === "undefined") g.Path2D = class Path2D {}
+  // Pre-registering the worker module here makes pdfjs-dist use it directly
+  // (its "main thread worker" fast path) instead of dynamically import()-ing
+  // GlobalWorkerOptions.workerSrc at runtime -- a specifier bundlers can't
+  // trace statically, which left the worker file missing from the deploy.
+  g.pdfjsWorker = pdfjsWorker
 
-  const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs")
-  // pdfjs-dist resolves its worker via a dynamic path internally, which Turbopack's
-  // file tracer doesn't pick up for the deployed function. Resolving it ourselves
-  // with a literal specifier makes it a traceable reference.
-  GlobalWorkerOptions.workerSrc = createRequire(import.meta.url).resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs")
 
   const pdf = await getDocument({
     data: new Uint8Array(buffer),
