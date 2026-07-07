@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { computeRiskScore } from "@/lib/risk-score"
+import { TASK_STAGE_ORDER, stageFromSource } from "@/lib/task-stage"
 import { cn } from "@/lib/utils"
 import {
   MEDDPICC_LABELS,
@@ -318,16 +319,6 @@ function QuestionsCard({
 
 const TASK_TABS = ["All", "SC", "Prospect", "Joint"] as const
 type TaskTab = (typeof TASK_TABS)[number]
-
-const TASK_STAGE_ORDER = ["Post-call", "POV", "Value Engineering", "Manual", "Other"]
-
-function stageFromSource(source: string): string {
-  if (source.startsWith("post_call_")) return "Post-call"
-  if (source.startsWith("pov_")) return "POV"
-  if (source.startsWith("ve_")) return "Value Engineering"
-  if (source === "manual") return "Manual"
-  return "Other"
-}
 
 function reminderToDateInputValue(reminder_at: string | null) {
   return reminder_at ? new Date(reminder_at).toISOString().slice(0, 10) : ""
