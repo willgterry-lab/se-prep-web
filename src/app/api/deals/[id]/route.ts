@@ -38,3 +38,28 @@ export async function GET(
 
   return NextResponse.json({ deal, briefs: briefs ?? [], tasks: tasks ?? [] })
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  // Briefs, deal_tasks, and deal_stakeholders all have deal_id on delete cascade,
+  // so deleting the deal row removes everything attached to it in one go.
+  const { error, count } = await supabase
+    .from("deals")
+    .delete({ count: "exact" })
+    .eq("id", id)
+    .eq("user_id", user.id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!count) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+  return NextResponse.json({ success: true })
+}

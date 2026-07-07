@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { computeRiskScore } from "@/lib/risk-score"
 import { TASK_STAGE_ORDER, stageFromSource } from "@/lib/task-stage"
+import { DeleteDealButton } from "@/components/delete-deal-button"
 import { cn } from "@/lib/utils"
 import {
   MEDDPICC_LABELS,
@@ -1784,6 +1785,20 @@ export function DealView({
           Back to dashboard
         </Link>
       </div>
+
+      {/* Danger zone */}
+      <Card className="border-red-100">
+        <CardHeader>
+          <CardTitle className="text-base text-red-700">Danger zone</CardTitle>
+          <CardDescription>
+            Permanently delete this deal and all briefs, tasks, and stakeholders attached to it.
+            This cannot be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DeleteDealButton dealId={deal.id} prospectCompany={deal.prospect_company} />
+        </CardContent>
+      </Card>
     </div>
   )
 }
