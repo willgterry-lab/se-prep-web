@@ -1,6 +1,54 @@
 # Session log
 
-## Current state (2026-07-05, live Chrome verification)
+## Current state (2026-07-07, PDF extraction production bug fix)
+
+Fixed a production-only bug: uploading certain Bramwell call-transcript PDFs (e.g. "02 - SC First
+Call") to the post-call/POV/VE upload form failed extraction, while the exact same file worked
+fine when tested locally. Root-caused through several layers rather than guessing:
+
+- First fixed `extract-text/route.ts` swallowing the real error silently (no logging, generic
+  message to client) -- this was the real blocker to diagnosing anything.
+- Verified via server-side sha256 logging that the bytes reaching production were byte-identical
+  to a local copy that parsed fine -- ruled out iCloud sync/transit corruption as the cause.
+- The real culprit: `pdf-parse` vendors a ~decade-old, heavily-minified `pdf.js` v1.10.100 bundle,
+  loaded via a dynamic `require()`. It threw `bad XRef entry` on a well-formed file only when run
+  through the deployed function (stack trace pointed at a non-V8 runtime,
+  `../../opt/rust/*.js`) -- never reproduced locally under plain Node.
+- Replaced `pdf-parse` with `pdfjs-dist` (actively maintained). Hit two more Node/serverless
+  quirks along the way, both fixed: (1) missing `DOMMatrix`/`Path2D` globals normally supplied by
+  pdfjs-dist's optional native `@napi-rs/canvas` dependency, which didn't resolve on Vercel's Linux
+  runtime -- fixed with empty stubs, since we only call `getTextContent`, never render; (2)
+  pdfjs-dist's Node "fake worker" does `await import(this.workerSrc)` with `workerSrc` as a runtime
+  variable, which no bundler (Turbopack included) can trace statically, so the worker file was
+  missing from the deployed bundle regardless of what path we pointed it at. Fixed using pdfjs-dist's
+  documented escape hatch: pre-populating `globalThis.pdfjsWorker` with a *statically* imported
+  worker module, which makes pdfjs-dist skip the dynamic import path entirely.
+- Confirmed fixed by the user via live upload against production after the final deploy.
+
+Net effect: `pdf-parse` and `@types/pdf-parse` removed from `package.json`; `pdfjs-dist` added
+(kept out of Turbopack's bundle via `serverExternalPackages`, same treatment as
+`@react-pdf/renderer`). New file `src/types/pdfjs-dist-worker.d.ts` for the untyped worker
+subpath import.
+
+## Prior state (2026-07-06, interview demo-prep narrative)
+
+No code changes this session -- purely a talk-through to prep the Friday interview demo. Went
+stage-by-stage (prep -> post-call -> POV -> VE) building a pain-point/SC-benefit narrative for
+each, grounded in what's actually built (per AGENTS.md), not aspirational features. Not yet
+covered: the cross-cutting pieces (risk score, stakeholder tracker, salesroom as a whole,
+dashboard) -- offered to continue into those next time.
+
+### Outstanding (carried over, still true)
+- Batch POV analysis (the actual save path, not just classify) still not run against real data --
+  worth a real dry run before the demo, ideally with real setup/check-in/review transcripts on a
+  throwaway test deal rather than Bramwell.
+- Consider whether to regenerate Bramwell's VE baseline data (re-log the VE call) before the demo
+  so the slider-eligibility fix is visible there too, or accept it as a known gap for this
+  particular deal.
+- seagent.co.uk DNS still not pointed to Vercel.
+- Privacy page still says "SE Prep" -- needs rename pass.
+
+## Prior state (2026-07-05, live Chrome verification)
 
 ### Completed this session
 Migrations v6-v8 were run against the live Supabase instance. Chrome extension connected
