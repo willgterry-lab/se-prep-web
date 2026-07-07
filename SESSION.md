@@ -1,6 +1,36 @@
 # Session log
 
-## Current state (2026-07-07, PDF extraction production bug fix)
+## Current state (2026-07-07, salesroom task segmentation + delete-deal)
+
+Continuation of the same-day session, after the PDF extraction fix below.
+
+- **Salesroom "Next steps" now segmented like the main app's task list.** Previously a flat list.
+  Extracted the stage-grouping logic (`stageFromSource`/`TASK_STAGE_ORDER`, by `post_call_*` /
+  `pov_*` / `ve_*` / `manual` source prefix) out of `deal-view.tsx`'s `TaskList` into a shared
+  `src/lib/task-stage.ts`, used by both. Then added owner tabs (All / Prospect / Joint) to the
+  salesroom too, matching the main app's tabs -- deliberately **no SC tab**, since the salesroom
+  query never fetches SC-owned tasks (internal coaching notes, admin) per the documented
+  data-exposure rule in AGENTS.md, and an SC tab would either always be empty or require fetching
+  that data into a public-facing page. New client component `src/components/salesroom-tasks.tsx`
+  holds the tab state (the page itself is a server component). Verified the stage-grouping change
+  live against Bramwell's real salesroom URL before deploying; the follow-up tab change shipped
+  without a fresh live check since Bramwell was deleted partway through (see below) and Luminary
+  Brands had no share link yet -- logic is straightforward client-side filtering reusing the
+  already-verified grouping, but worth a quick manual look next session.
+- **Added deal deletion.** New `DELETE /api/deals/[id]` route + a "Danger zone" card at the bottom
+  of the deal page (`delete-deal-button.tsx`, same two-step confirm pattern as the existing
+  account-deletion flow). No manual cascade needed -- `briefs`, `deal_tasks`, and
+  `deal_stakeholders` all already have `deal_id ... on delete cascade` in the schema. Verified via
+  schema/RLS review and a clean build, not via a live test delete (didn't want to test-execute a
+  destructive op against the only remaining deal in the database).
+- **Bramwell Fine Foods deal no longer exists.** Mid-session, a query turned up only one deal in
+  the database ("Luminary Brands") -- Bramwell was gone. Confirmed with the user this was
+  intentional, not something this session's work caused (nothing here ran any write/delete against
+  Supabase before that point). Worth noting since Bramwell was the demo-prep deal referenced
+  throughout the 2026-07-05/06 entries below -- **Luminary Brands is presumably the new demo deal**,
+  though that wasn't explicitly confirmed.
+
+## Prior state (2026-07-07, PDF extraction production bug fix)
 
 Fixed a production-only bug: uploading certain Bramwell call-transcript PDFs (e.g. "02 - SC First
 Call") to the post-call/POV/VE upload form failed extraction, while the exact same file worked
