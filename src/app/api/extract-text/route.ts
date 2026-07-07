@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import mammoth from "mammoth"
-import { createHash } from "crypto"
-// Direct lib import avoids pdf-parse v1's test-file side effect on module init
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (buf: Buffer) => Promise<{ text: string }>
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs"
 
 export const maxDuration = 30
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const pdf = await getDocument({
+    data: new Uint8Array(buffer),
+    useWorkerFetch: false,
+    disableFontFace: true,
+  }).promise
+
+  const pages: string[] = []
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "))
+  }
+  return pages.join("\n\n")
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -22,8 +35,6 @@ export async function POST(req: NextRequest) {
   const name = file.name.toLowerCase()
   const bytes = await file.arrayBuffer()
   const buffer = Buffer.from(bytes)
-  const sha256 = createHash("sha256").update(buffer).digest("hex")
-  console.log(`extract-text received ${file.name}: file.size=${file.size} buffer.length=${buffer.length} sha256=${sha256}`)
 
   try {
     let text = ""
@@ -31,8 +42,7 @@ export async function POST(req: NextRequest) {
     if (name.endsWith(".txt")) {
       text = new TextDecoder().decode(bytes)
     } else if (name.endsWith(".pdf")) {
-      const result = await pdfParse(buffer)
-      text = result.text
+      text = await extractPdfText(buffer)
     } else if (name.endsWith(".docx")) {
       const result = await mammoth.extractRawText({ buffer })
       text = result.value
@@ -44,9 +54,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error(`extract-text failed for ${file.name}:`, err)
     const detail = err instanceof Error ? err.message : String(err)
-    return NextResponse.json(
-      { error: `Could not extract text from ${file.name}: ${detail} [size=${buffer.length} sha256=${sha256.slice(0, 12)}]` },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: `Could not extract text from ${file.name}: ${detail}` }, { status: 500 })
   }
 }
