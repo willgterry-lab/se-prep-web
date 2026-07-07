@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { supabaseAdmin } from "@/lib/supabase/admin"
-import { TASK_STAGE_ORDER, stageFromSource } from "@/lib/task-stage"
+import { SalesroomTasks } from "@/components/salesroom-tasks"
 import type { SuccessCriterion, PovAssessment, PovCriterionStatus, MatchedCaseStudy, DealTask, VeProposal, VeConfidence } from "@/types"
 
 type SalesroomBrief = {
@@ -127,13 +127,6 @@ export default async function SalesroomPage({
 
   const openTasks = (tasks as Pick<DealTask, "id" | "description" | "owner" | "reminder_at" | "source">[]) ?? []
 
-  const tasksByStage = new Map<string, typeof openTasks>()
-  for (const task of openTasks) {
-    const stage = stageFromSource(task.source)
-    tasksByStage.set(stage, [...(tasksByStage.get(stage) ?? []), task])
-  }
-  const orderedTaskStages = TASK_STAGE_ORDER.filter((s) => tasksByStage.has(s))
-
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-2xl mx-auto px-6 py-12 space-y-12">
@@ -257,44 +250,7 @@ export default async function SalesroomPage({
         )}
 
         {/* Next steps */}
-        {openTasks.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-              Next steps
-            </h2>
-            <div className="space-y-3">
-              {orderedTaskStages.map((stage) => (
-                <div key={stage} className="space-y-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 pt-1">
-                    {stage}
-                  </p>
-                  <div className="space-y-2">
-                    {tasksByStage.get(stage)!.map((task) => (
-                      <div key={task.id} className="flex items-start gap-3 py-2 border-b last:border-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gray-300 mt-2 shrink-0" />
-                        <div className="flex-1">
-                          <p className="text-sm text-gray-800">{task.description}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {task.owner && (
-                              <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
-                                {task.owner}
-                              </span>
-                            )}
-                            {task.reminder_at && (
-                              <span className="text-[10px] text-gray-400">
-                                By {new Date(task.reminder_at).toLocaleDateString("en-GB")}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        <SalesroomTasks tasks={openTasks} />
 
         {/* Value proposal (shown only when published) */}
         {deal.ve_published && deal.ve_proposal && (() => {
