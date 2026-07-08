@@ -20,8 +20,9 @@ import {
   RisksSectionView,
   DiscoveryQuestionsSectionView,
   SourceLogSectionView,
+  ResearchBriefFullView,
 } from "@/components/research-brief-view"
-import type { CompanyResolution, ResolvedCompany, ResearchSections, SourceLogEntry } from "@/types"
+import type { CompanyResolution, ResolvedCompany, ResearchSections, SourceLogEntry, ResearchBrief } from "@/types"
 
 // Manual fallback entry point (spec: "Run prospect research" / "Re-run research"
 // on the deal page). Same company-resolution and section components as the
@@ -43,6 +44,7 @@ export default function ResearchNewPage() {
 
   const [sections, setSections] = useState<Partial<ResearchSections>>({})
   const [sourceLog, setSourceLog] = useState<SourceLogEntry[] | null>(null)
+  const [researchBriefId, setResearchBriefId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/deals/${dealId}`)
@@ -127,6 +129,7 @@ export default function ResearchNewPage() {
           } else if (event.type === "research_source_log") {
             setSourceLog(event.data)
           } else if (event.type === "research_done") {
+            setResearchBriefId(event.data.research_brief_id)
             setPhase("done")
           } else if (event.type === "error") {
             throw new Error(event.message)
@@ -187,6 +190,36 @@ export default function ResearchNewPage() {
     )
   }
 
+  // Once research finishes, hand off to the same tabbed full-brief renderer
+  // used on the deal page, instead of the stacked live-reveal view below --
+  // that stacked view is only meant to read as "watching it work" while
+  // sections stream in one at a time, not as the browsing experience once
+  // everything is in.
+  if (phase === "done" && researchBriefId && companyRes?.status === "resolved" && companyRes.company) {
+    const brief: ResearchBrief = {
+      id: researchBriefId,
+      deal_id: dealId,
+      user_id: "",
+      company_name: companyRes.company.name,
+      company_domain: companyRes.company.domain,
+      company_hq: companyRes.company.hq,
+      company_description: companyRes.company.description,
+      resolution_confidence: companyRes.confidence ?? null,
+      sections: sections as ResearchSections,
+      source_log: sourceLog ?? [],
+      created_at: new Date().toISOString(),
+    }
+    return (
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">{companyRes.company.name}</h1>
+          <Button onClick={() => router.push(`/deal/${dealId}`)}>Continue to deal</Button>
+        </div>
+        <ResearchBriefFullView brief={brief} />
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -194,13 +227,8 @@ export default function ResearchNewPage() {
           <h1 className="text-2xl font-bold">
             {companyRes?.status === "resolved" ? companyRes.company?.name : "Researching…"}
           </h1>
-          <p className="text-gray-500 mt-1 text-sm">
-            {phase === "streaming" ? "Researching prospect company…" : "Research complete."}
-          </p>
+          <p className="text-gray-500 mt-1 text-sm">Researching prospect company…</p>
         </div>
-        {phase === "done" && (
-          <Button onClick={() => router.push(`/deal/${dealId}`)}>Continue to deal</Button>
-        )}
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
