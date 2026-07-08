@@ -14,7 +14,13 @@ import {
 import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, MeddpiccScore, Brief } from "@/types"
 
-export const maxDuration = 60
+// Chains scoreMeddpicc then seven more calls (risks/questions/email/actions/
+// stakeholders/completed-tasks/call-date, mostly parallel). 60s was already
+// tight for this many chained calls against a real transcript -- confirmed in
+// production that /api/analyze's own 120s limit was too tight for a
+// comparable chain, so raised proactively here rather than waiting for the
+// same timeout to surface live.
+export const maxDuration = 120
 
 export async function POST(
   req: NextRequest,

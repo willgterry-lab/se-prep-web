@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server"
 import { runSinglePovAnalysis } from "@/lib/pov-analysis"
 import type { ProductContext, PovCallType } from "@/types"
 
-export const maxDuration = 60
+// runSinglePovAnalysis chains a comparable sequence to post-call/VE
+// (scoreMeddpicc, assessPovCriteria, risks, questions, email, actions,
+// completed-tasks). See the comment on post-call's maxDuration.
+export const maxDuration = 120
 
 export async function POST(
   req: NextRequest,

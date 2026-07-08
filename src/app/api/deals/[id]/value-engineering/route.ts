@@ -16,7 +16,10 @@ import {
 import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, MeddpiccScore, Brief, VeBaselineInput } from "@/types"
 
-export const maxDuration = 60
+// Chains an even longer sequence than post-call (adds matchCaseStudies and
+// extractVeBaseline). See the comment on post-call's maxDuration for why 60s
+// was raised here too.
+export const maxDuration = 120
 
 export async function POST(
   req: NextRequest,
