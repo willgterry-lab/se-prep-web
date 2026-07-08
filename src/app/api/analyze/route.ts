@@ -27,10 +27,15 @@ import type {
   ExtractedStakeholder,
 } from "@/types"
 
-// Research adds several more model calls (four web_search-backed calls, mostly
-// parallel, plus a follow-up reasoning call) on top of the original prep
-// pipeline's ~60s budget.
-export const maxDuration = 120
+// Research adds several more model calls on top of the original prep
+// pipeline's ~60s budget: four web_search-backed calls (each retried once on
+// a parse failure, see createAndParse in research.ts), a follow-up reasoning
+// call, then the existing MEDDPICC/case-study/email calls grounded in the
+// result. 120s measured as too tight in production (real timeout, not a
+// hang) against a data-rich company -- matches the 300s already used for
+// pov/batch, the other route in this codebase that chains multiple model
+// calls in one request.
+export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()

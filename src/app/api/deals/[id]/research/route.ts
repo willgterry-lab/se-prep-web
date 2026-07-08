@@ -19,7 +19,9 @@ import type { ProductContext, ResolvedCompany, ResearchSections, ExtractedStakeh
 // without the surrounding MEDDPICC/case-study/email steps -- those belong to a
 // specific call's brief, not to a standalone research run. Reuses whatever
 // discovery notes already exist on the deal's earliest prep brief, if any.
-export const maxDuration = 120
+// 300s matches /api/analyze -- see the comment there on why 120s timed out
+// for real in production.
+export const maxDuration = 300
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: dealId } = await params
