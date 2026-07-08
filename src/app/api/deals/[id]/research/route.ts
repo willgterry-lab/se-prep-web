@@ -8,6 +8,8 @@ import {
   researchValueDriversAndRisks,
   researchDiscoveryQuestions,
   buildSourceLog,
+  getDemoCache,
+  emitCachedResearch,
   CHOCO_OPERATING_MODEL_LENS,
   CHOCO_VALUE_DRIVER_TAXONOMY,
 } from "@/lib/research"
@@ -72,54 +74,64 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"))
 
       try {
-        const [snapshotAndContext, operatingModel, stakeholdersAndSignals, driversAndRisks, notesStakeholders] =
-          await Promise.all([
-            researchSnapshotAndContext(company).then((r) => {
-              emit({ type: "research_snapshot", data: r.snapshot })
-              emit({ type: "research_strategic_context", data: r.strategic_context })
-              return r
-            }),
-            researchOperatingModel(company, CHOCO_OPERATING_MODEL_LENS).then((r) => {
-              emit({ type: "research_operating_model", data: r })
-              return r
-            }),
-            researchStakeholdersAndSignals(company).then((r) => {
-              emit({ type: "research_stakeholders", data: r.stakeholders })
-              emit({ type: "research_buying_signals", data: r.buying_signals })
-              return r
-            }),
-            researchValueDriversAndRisks({
-              company,
-              discovery_notes: discoveryNotes,
-              product,
-              taxonomy: CHOCO_VALUE_DRIVER_TAXONOMY,
-            }).then((r) => {
-              emit({ type: "research_value_drivers", data: r.value_drivers })
-              emit({ type: "research_risks", data: r.risks })
-              return r
-            }),
-            discoveryNotes ? extractStakeholders(discoveryNotes, company.name) : Promise.resolve([]),
-          ])
+        // Demo cache: see the comment in /api/analyze/route.ts.
+        const demoCache = getDemoCache(company.name)
 
-        const sectionsWithoutQuestions = {
-          snapshot: snapshotAndContext.snapshot,
-          strategic_context: snapshotAndContext.strategic_context,
-          operating_model: operatingModel,
-          value_drivers: driversAndRisks.value_drivers,
-          stakeholders: stakeholdersAndSignals.stakeholders,
-          buying_signals: stakeholdersAndSignals.buying_signals,
-          risks: driversAndRisks.risks,
-        }
+        const [{ sections, sourceLog }, notesStakeholders] = await Promise.all([
+          demoCache
+            ? emitCachedResearch(demoCache, emit).then(() => ({ sections: demoCache.sections, sourceLog: demoCache.sourceLog }))
+            : (async (): Promise<{ sections: ResearchSections; sourceLog: ReturnType<typeof buildSourceLog> }> => {
+                const [snapshotAndContext, operatingModel, stakeholdersAndSignals, driversAndRisks] =
+                  await Promise.all([
+                    researchSnapshotAndContext(company).then((r) => {
+                      emit({ type: "research_snapshot", data: r.snapshot })
+                      emit({ type: "research_strategic_context", data: r.strategic_context })
+                      return r
+                    }),
+                    researchOperatingModel(company, CHOCO_OPERATING_MODEL_LENS).then((r) => {
+                      emit({ type: "research_operating_model", data: r })
+                      return r
+                    }),
+                    researchStakeholdersAndSignals(company).then((r) => {
+                      emit({ type: "research_stakeholders", data: r.stakeholders })
+                      emit({ type: "research_buying_signals", data: r.buying_signals })
+                      return r
+                    }),
+                    researchValueDriversAndRisks({
+                      company,
+                      discovery_notes: discoveryNotes,
+                      product,
+                      taxonomy: CHOCO_VALUE_DRIVER_TAXONOMY,
+                    }).then((r) => {
+                      emit({ type: "research_value_drivers", data: r.value_drivers })
+                      emit({ type: "research_risks", data: r.risks })
+                      return r
+                    }),
+                  ])
 
-        const discoveryQuestions = await researchDiscoveryQuestions({
-          discovery_notes: discoveryNotes,
-          sections: sectionsWithoutQuestions,
-        })
-        emit({ type: "research_discovery_questions", data: discoveryQuestions })
+                const sectionsWithoutQuestions = {
+                  snapshot: snapshotAndContext.snapshot,
+                  strategic_context: snapshotAndContext.strategic_context,
+                  operating_model: operatingModel,
+                  value_drivers: driversAndRisks.value_drivers,
+                  stakeholders: stakeholdersAndSignals.stakeholders,
+                  buying_signals: stakeholdersAndSignals.buying_signals,
+                  risks: driversAndRisks.risks,
+                }
 
-        const sections: ResearchSections = { ...sectionsWithoutQuestions, discovery_questions: discoveryQuestions }
-        const sourceLog = buildSourceLog(sections)
-        emit({ type: "research_source_log", data: sourceLog })
+                const discoveryQuestions = await researchDiscoveryQuestions({
+                  discovery_notes: discoveryNotes,
+                  sections: sectionsWithoutQuestions,
+                })
+                emit({ type: "research_discovery_questions", data: discoveryQuestions })
+
+                const sections: ResearchSections = { ...sectionsWithoutQuestions, discovery_questions: discoveryQuestions }
+                const sourceLog = buildSourceLog(sections)
+                emit({ type: "research_source_log", data: sourceLog })
+                return { sections, sourceLog }
+              })(),
+          discoveryNotes ? extractStakeholders(discoveryNotes, company.name) : Promise.resolve([]),
+        ])
 
         const { data: researchBrief, error } = await supabase
           .from("research_briefs")

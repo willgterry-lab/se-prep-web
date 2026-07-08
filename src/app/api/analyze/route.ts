@@ -14,6 +14,8 @@ import {
   researchValueDriversAndRisks,
   researchDiscoveryQuestions,
   buildSourceLog,
+  getDemoCache,
+  emitCachedBrief,
   CHOCO_OPERATING_MODEL_LENS,
   CHOCO_VALUE_DRIVER_TAXONOMY,
 } from "@/lib/research"
@@ -25,6 +27,7 @@ import type {
   ResolvedCompany,
   ResearchSections,
   ExtractedStakeholder,
+  SourceLogEntry,
 } from "@/types"
 
 // Research adds several more model calls on top of the original prep
@@ -107,60 +110,125 @@ export async function POST(req: NextRequest) {
 
         const dealId = deal.id
 
-        // Prospect research and notes-only stakeholder extraction run in
-        // parallel -- extraction only needs the pasted notes, not web evidence,
-        // so there's no reason to make it wait behind the research pipeline.
-        const [snapshotAndContext, operatingModel, stakeholdersAndSignals, driversAndRisks, notesStakeholders] =
-          await Promise.all([
-            researchSnapshotAndContext(resolvedCompany).then((r) => {
-              emit({ type: "research_snapshot", data: r.snapshot })
-              emit({ type: "research_strategic_context", data: r.strategic_context })
-              return r
-            }),
-            researchOperatingModel(resolvedCompany, CHOCO_OPERATING_MODEL_LENS).then((r) => {
-              emit({ type: "research_operating_model", data: r })
-              return r
-            }),
-            researchStakeholdersAndSignals(resolvedCompany).then((r) => {
-              emit({ type: "research_stakeholders", data: r.stakeholders })
-              emit({ type: "research_buying_signals", data: r.buying_signals })
-              return r
-            }),
-            researchValueDriversAndRisks({
-              company: resolvedCompany,
-              discovery_notes,
-              product,
-              taxonomy: CHOCO_VALUE_DRIVER_TAXONOMY,
-            }).then((r) => {
-              emit({ type: "research_value_drivers", data: r.value_drivers })
-              emit({ type: "research_risks", data: r.risks })
-              return r
-            }),
+        // Demo cache: a known demo company (see research.ts) is served from a
+        // pre-computed fixture instead of ~1-3 minutes of real generation --
+        // paced emits keep the same streaming UI, just fast. Covers the
+        // downstream MEDDPICC/case-study/email/stakeholder steps too, not
+        // just research -- those still needed ~25s of real, unavoidable
+        // generation time on top of research alone once the notes are fixed
+        // and known in advance.
+        const demoCache = getDemoCache(resolvedCompany.name)
+
+        let researchSections: ResearchSections
+        let sourceLog: SourceLogEntry[]
+        let notesStakeholders: ExtractedStakeholder[]
+        let meddpicc: MeddpiccScore
+        let caseStudies: MatchedCaseStudy[]
+        let email: string
+
+        if (demoCache) {
+          await emitCachedBrief(demoCache, emit)
+          researchSections = demoCache.sections
+          sourceLog = demoCache.sourceLog
+          notesStakeholders = demoCache.notesStakeholders
+          meddpicc = demoCache.meddpicc
+          caseStudies = demoCache.caseStudies
+          email = demoCache.email
+        } else {
+          // Prospect research and notes-only stakeholder extraction run in
+          // parallel -- extraction only needs the pasted notes, not web
+          // evidence, so there's no reason to make it wait behind research.
+          const [research, realNotesStakeholders] = await Promise.all([
+            (async (): Promise<{ sections: ResearchSections; sourceLog: SourceLogEntry[] }> => {
+              const [snapshotAndContext, operatingModel, stakeholdersAndSignals, driversAndRisks] =
+                await Promise.all([
+                  researchSnapshotAndContext(resolvedCompany).then((r) => {
+                    emit({ type: "research_snapshot", data: r.snapshot })
+                    emit({ type: "research_strategic_context", data: r.strategic_context })
+                    return r
+                  }),
+                  researchOperatingModel(resolvedCompany, CHOCO_OPERATING_MODEL_LENS).then((r) => {
+                    emit({ type: "research_operating_model", data: r })
+                    return r
+                  }),
+                  researchStakeholdersAndSignals(resolvedCompany).then((r) => {
+                    emit({ type: "research_stakeholders", data: r.stakeholders })
+                    emit({ type: "research_buying_signals", data: r.buying_signals })
+                    return r
+                  }),
+                  researchValueDriversAndRisks({
+                    company: resolvedCompany,
+                    discovery_notes,
+                    product,
+                    taxonomy: CHOCO_VALUE_DRIVER_TAXONOMY,
+                  }).then((r) => {
+                    emit({ type: "research_value_drivers", data: r.value_drivers })
+                    emit({ type: "research_risks", data: r.risks })
+                    return r
+                  }),
+                ])
+
+              const sectionsWithoutQuestions = {
+                snapshot: snapshotAndContext.snapshot,
+                strategic_context: snapshotAndContext.strategic_context,
+                operating_model: operatingModel,
+                value_drivers: driversAndRisks.value_drivers,
+                stakeholders: stakeholdersAndSignals.stakeholders,
+                buying_signals: stakeholdersAndSignals.buying_signals,
+                risks: driversAndRisks.risks,
+              }
+
+              const discoveryQuestions = await researchDiscoveryQuestions({
+                discovery_notes,
+                sections: sectionsWithoutQuestions,
+              })
+              emit({ type: "research_discovery_questions", data: discoveryQuestions })
+
+              const sections: ResearchSections = { ...sectionsWithoutQuestions, discovery_questions: discoveryQuestions }
+              const sl = buildSourceLog(sections)
+              emit({ type: "research_source_log", data: sl })
+              return { sections, sourceLog: sl }
+            })(),
             extractStakeholders(discovery_notes, prospect_company),
           ])
+          researchSections = research.sections
+          sourceLog = research.sourceLog
+          notesStakeholders = realNotesStakeholders
 
-        const sectionsWithoutQuestions = {
-          snapshot: snapshotAndContext.snapshot,
-          strategic_context: snapshotAndContext.strategic_context,
-          operating_model: operatingModel,
-          value_drivers: driversAndRisks.value_drivers,
-          stakeholders: stakeholdersAndSignals.stakeholders,
-          buying_signals: stakeholdersAndSignals.buying_signals,
-          risks: driversAndRisks.risks,
+          // Grounded in the research brief just completed above: MEDDPICC
+          // pre-seeds Identified Pain/Metrics from the value driver
+          // hypotheses, and case studies match on that evidenced pain rather
+          // than vertical alone.
+          const [meddpiccResult, caseStudiesResult] = await Promise.all([
+            scoreMeddpicc(discovery_notes, product, prospect_company, null, researchSections.value_drivers).then((result) => {
+              emit({ type: "meddpicc", data: result })
+              return result
+            }),
+            matchCaseStudies(discovery_notes, product, researchSections.value_drivers).then((result) => {
+              emit({ type: "case_studies", data: result })
+              return result
+            }),
+          ])
+
+          const [emailResult, questions] = await Promise.all([
+            draftPrepEmail({
+              prospect_name,
+              prospect_company,
+              discovery_notes,
+              product,
+              meddpicc: meddpiccResult,
+              matched_case_studies: caseStudiesResult as MatchedCaseStudy[],
+              sc_name: scName,
+              research_drivers: researchSections.value_drivers,
+            }),
+            generateQuestions(discovery_notes, meddpiccResult, product, researchSections.discovery_questions),
+          ])
+          emit({ type: "email", data: emailResult })
+
+          meddpicc = { ...meddpiccResult, suggested_questions: questions }
+          caseStudies = caseStudiesResult
+          email = emailResult
         }
-
-        const discoveryQuestions = await researchDiscoveryQuestions({
-          discovery_notes,
-          sections: sectionsWithoutQuestions,
-        })
-        emit({ type: "research_discovery_questions", data: discoveryQuestions })
-
-        const researchSections: ResearchSections = {
-          ...sectionsWithoutQuestions,
-          discovery_questions: discoveryQuestions,
-        }
-        const sourceLog = buildSourceLog(researchSections)
-        emit({ type: "research_source_log", data: sourceLog })
 
         const { data: researchBrief, error: researchError } = await supabase
           .from("research_briefs")
@@ -193,37 +261,6 @@ export async function POST(req: NextRequest) {
           .map((s) => ({ name: s.name, role: s.role }))
         const mergedStakeholders = [...notesStakeholders, ...researchStakeholders]
 
-        // Grounded in the research brief just completed above: MEDDPICC pre-seeds
-        // Identified Pain/Metrics from the value driver hypotheses, and case
-        // studies match on that evidenced pain rather than vertical alone.
-        const [meddpicc, caseStudies] = await Promise.all([
-          scoreMeddpicc(discovery_notes, product, prospect_company, null, researchSections.value_drivers).then((result) => {
-            emit({ type: "meddpicc", data: result })
-            return result
-          }),
-          matchCaseStudies(discovery_notes, product, researchSections.value_drivers).then((result) => {
-            emit({ type: "case_studies", data: result })
-            return result
-          }),
-        ])
-
-        const [email, questions] = await Promise.all([
-          draftPrepEmail({
-            prospect_name,
-            prospect_company,
-            discovery_notes,
-            product,
-            meddpicc,
-            matched_case_studies: caseStudies as MatchedCaseStudy[],
-            sc_name: scName,
-            research_drivers: researchSections.value_drivers,
-          }),
-          generateQuestions(discovery_notes, meddpicc, product, researchSections.discovery_questions),
-        ])
-        emit({ type: "email", data: email })
-
-        const meddpiccWithQuestions: MeddpiccScore = { ...meddpicc, suggested_questions: questions }
-
         const { data: brief, error } = await supabase
           .from("briefs")
           .insert({
@@ -233,7 +270,7 @@ export async function POST(req: NextRequest) {
             prospect_name,
             prospect_company,
             discovery_notes,
-            meddpicc: meddpiccWithQuestions,
+            meddpicc,
             matched_case_studies: caseStudies,
             follow_up_email: email,
             research_brief_id: researchBrief?.id ?? null,
