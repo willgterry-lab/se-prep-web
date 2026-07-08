@@ -5,6 +5,7 @@ import Link from "next/link"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { CopyButton } from "@/components/copy-button"
 import { DeleteBriefButton } from "@/components/delete-brief-button"
@@ -255,219 +256,232 @@ export function BriefView({ brief, continueHref }: { brief: Brief; continueHref?
         </div>
       </div>
 
-      {/* Score delta (post-call briefs only) */}
-      {brief.delta && <DeltaCard delta={brief.delta} />}
+      <Tabs defaultValue="overview">
+        <TabsList variant="line" className="w-full flex-nowrap justify-start overflow-x-auto">
+          <TabsTrigger value="overview" className="shrink-0">Overview</TabsTrigger>
+          {m && <TabsTrigger value="meddpicc" className="shrink-0">MEDDPICC</TabsTrigger>}
+          {allStudies.length > 0 && <TabsTrigger value="case_studies" className="shrink-0">Case studies</TabsTrigger>}
+          {brief.follow_up_email && <TabsTrigger value="email" className="shrink-0">Email</TabsTrigger>}
+        </TabsList>
 
-      {/* Risk areas (post-call briefs only) */}
-      {brief.risks && brief.risks.length > 0 && (
-        <RiskCard risks={brief.risks} riskScore={computeRiskScore(brief.risks)} />
-      )}
+        {/* Overview: score movement, risk areas, deal assessment */}
+        <TabsContent value="overview" className="space-y-6 mt-4">
+          {brief.delta && <DeltaCard delta={brief.delta} />}
 
-      {m && (
-        <>
-          {/* Deal summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Deal assessment</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-700">{m.summary}</p>
-            </CardContent>
-          </Card>
-
-          {/* MEDDPICC breakdown */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>MEDDPICC breakdown</CardTitle>
-                <CopyButton text={meddpiccToText(m)} label="Copy all" />
-              </div>
-            </CardHeader>
-            <CardContent className="divide-y">
-              {(
-                Object.keys(MEDDPICC_LABELS) as Array<keyof typeof MEDDPICC_LABELS>
-              ).map((key) => {
-                const element = m[key]
-                return (
-                  <div key={key} className="py-4 first:pt-0 last:pb-0">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-sm">
-                        {MEDDPICC_LABELS[key]}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <ScorePip score={element.score} />
-                        <span className="text-xs text-gray-400 w-8 text-right">{element.score}/3</span>
-                        <CopyButton text={elementToText(MEDDPICC_LABELS[key], element)} />
-                      </div>
-                    </div>
-                    {element.evidence && element.evidence !== "none" && (
-                      <p className="text-sm text-gray-600 mb-1">
-                        <span className="font-medium">Evidence: </span>
-                        &ldquo;{element.evidence}&rdquo;
-                      </p>
-                    )}
-                    {element.gap && (
-                      <p className="text-sm text-gray-400">
-                        <span className="font-medium">Gap: </span>
-                        {element.gap}
-                      </p>
-                    )}
-                  </div>
-                )
-              })}
-            </CardContent>
-          </Card>
-
-          {/* Suggested questions */}
-          {m.suggested_questions && (
-            <SuggestedQuestionsCard questions={m.suggested_questions} />
+          {brief.risks && brief.risks.length > 0 && (
+            <RiskCard risks={brief.risks} riskScore={computeRiskScore(brief.risks)} />
           )}
 
-          {/* Questions answered on this call (post-call briefs only) */}
-          {m.answered_questions && (
-            m.answered_questions.sc_intro.length > 0 ||
-            m.answered_questions.discovery.length > 0 ||
-            m.answered_questions.technical.length > 0
-          ) && (
+          {m && (
             <Card>
               <CardHeader>
-                <CardTitle>Covered on this call</CardTitle>
+                <CardTitle>Deal assessment</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-5">
-                {QUESTION_SECTIONS.map(({ key, label }) => {
-                  const qs = m.answered_questions![key]
-                  if (!qs?.length) return null
+              <CardContent>
+                <p className="text-gray-700">{m.summary}</p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* MEDDPICC: full breakdown, suggested questions, questions answered this call */}
+        {m && (
+          <TabsContent value="meddpicc" className="space-y-6 mt-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>MEDDPICC breakdown</CardTitle>
+                  <CopyButton text={meddpiccToText(m)} label="Copy all" />
+                </div>
+              </CardHeader>
+              <CardContent className="divide-y">
+                {(
+                  Object.keys(MEDDPICC_LABELS) as Array<keyof typeof MEDDPICC_LABELS>
+                ).map((key) => {
+                  const element = m[key]
                   return (
-                    <div key={key}>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{label}</p>
-                      <ul className="space-y-2">
-                        {qs.map((q, i) => (
-                          <li key={i} className="flex items-start gap-3">
-                            <svg className="w-4 h-4 text-[#1ED760] mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                            <p className="text-sm text-gray-400 line-through">{q}</p>
-                          </li>
-                        ))}
-                      </ul>
+                    <div key={key} className="py-4 first:pt-0 last:pb-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-sm">
+                          {MEDDPICC_LABELS[key]}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <ScorePip score={element.score} />
+                          <span className="text-xs text-gray-400 w-8 text-right">{element.score}/3</span>
+                          <CopyButton text={elementToText(MEDDPICC_LABELS[key], element)} />
+                        </div>
+                      </div>
+                      {element.evidence && element.evidence !== "none" && (
+                        <p className="text-sm text-gray-600 mb-1">
+                          <span className="font-medium">Evidence: </span>
+                          &ldquo;{element.evidence}&rdquo;
+                        </p>
+                      )}
+                      {element.gap && (
+                        <p className="text-sm text-gray-400">
+                          <span className="font-medium">Gap: </span>
+                          {element.gap}
+                        </p>
+                      )}
                     </div>
                   )
                 })}
               </CardContent>
             </Card>
-          )}
-        </>
-      )}
 
-      {/* Case studies */}
-      {allStudies.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Recommended case studies</CardTitle>
-                <p className="text-xs text-gray-400 mt-1">
-                  Select which to include in the email
-                </p>
-              </div>
-              <CopyButton text={caseStudiesToText(selectedStudies.length ? selectedStudies : allStudies)} />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {allStudies.map((cs: MatchedCaseStudy, i: number) => (
-              <div key={i}>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={selectedIndices.has(i)}
-                    onChange={() => toggleStudy(i)}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 accent-[#1ED760] cursor-pointer"
-                  />
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{cs.industry}</Badge>
-                      <a
-                        href={cs.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-sm hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {cs.customer}
-                      </a>
-                    </div>
-                    <p className="text-sm text-gray-600">{cs.summary}</p>
-                    <p className="text-xs text-[#1ED760] italic" style={{ color: "#0e8a42" }}>
-                      {cs.relevance_reason}
-                    </p>
-                    {cs.one_liner && (
-                      <div className="flex items-start justify-between gap-3 rounded-md bg-[#F4F7F6] border px-3 py-2 mt-2">
-                        <p className="text-xs text-gray-700 leading-relaxed">
-                          &ldquo;{cs.one_liner}&rdquo;
-                        </p>
-                        <span onClick={(e) => e.stopPropagation()}>
-                          <CopyButton text={cs.one_liner} />
-                        </span>
+            {m.suggested_questions && (
+              <SuggestedQuestionsCard questions={m.suggested_questions} />
+            )}
+
+            {m.answered_questions && (
+              m.answered_questions.sc_intro.length > 0 ||
+              m.answered_questions.discovery.length > 0 ||
+              m.answered_questions.technical.length > 0
+            ) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Covered on this call</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {QUESTION_SECTIONS.map(({ key, label }) => {
+                    const qs = m.answered_questions![key]
+                    if (!qs?.length) return null
+                    return (
+                      <div key={key}>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{label}</p>
+                        <ul className="space-y-2">
+                          {qs.map((q, i) => (
+                            <li key={i} className="flex items-start gap-3">
+                              <svg className="w-4 h-4 text-[#1ED760] mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                              <p className="text-sm text-gray-400 line-through">{q}</p>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                    )}
-                  </div>
-                </label>
-                {i < allStudies.length - 1 && <Separator className="mt-4" />}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+                    )
+                  })}
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        )}
 
-      {/* Follow-up email */}
-      {brief.follow_up_email && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>{brief.stage === "post_call" ? "Follow-up email" : "Intro email"}</CardTitle>
-                <p className="text-xs text-gray-400 mt-1">{emailSubject}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <CopyButton text={emailText} />
-                <a
-                  href={mailtoHref}
-                  className={cn(
-                    buttonVariants({ variant: "default", size: "sm" })
-                  )}
-                >
-                  Send
-                </a>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans leading-relaxed">
-              {emailText}
-            </pre>
-            {selectedStudies.length > 0 && (
-              <div className="rounded-md bg-[#F4F7F6] border px-4 py-3 space-y-1">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Included case study links
-                </p>
-                {selectedStudies.map((cs, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <a
-                      href={cs.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline font-medium"
-                    >
-                      {cs.customer}
-                    </a>
-                    <span className="text-gray-400 text-xs truncate">{cs.url}</span>
+        {/* Case studies */}
+        {allStudies.length > 0 && (
+          <TabsContent value="case_studies" className="mt-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Recommended case studies</CardTitle>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Select which to include in the email
+                    </p>
+                  </div>
+                  <CopyButton text={caseStudiesToText(selectedStudies.length ? selectedStudies : allStudies)} />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {allStudies.map((cs: MatchedCaseStudy, i: number) => (
+                  <div key={i}>
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={selectedIndices.has(i)}
+                        onChange={() => toggleStudy(i)}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 accent-[#1ED760] cursor-pointer"
+                      />
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{cs.industry}</Badge>
+                          <a
+                            href={cs.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-sm hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {cs.customer}
+                          </a>
+                        </div>
+                        <p className="text-sm text-gray-600">{cs.summary}</p>
+                        <p className="text-xs text-[#1ED760] italic" style={{ color: "#0e8a42" }}>
+                          {cs.relevance_reason}
+                        </p>
+                        {cs.one_liner && (
+                          <div className="flex items-start justify-between gap-3 rounded-md bg-[#F4F7F6] border px-3 py-2 mt-2">
+                            <p className="text-xs text-gray-700 leading-relaxed">
+                              &ldquo;{cs.one_liner}&rdquo;
+                            </p>
+                            <span onClick={(e) => e.stopPropagation()}>
+                              <CopyButton text={cs.one_liner} />
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                    {i < allStudies.length - 1 && <Separator className="mt-4" />}
                   </div>
                 ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Follow-up email */}
+        {brief.follow_up_email && (
+          <TabsContent value="email" className="mt-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>{brief.stage === "post_call" ? "Follow-up email" : "Intro email"}</CardTitle>
+                    <p className="text-xs text-gray-400 mt-1">{emailSubject}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CopyButton text={emailText} />
+                    <a
+                      href={mailtoHref}
+                      className={cn(
+                        buttonVariants({ variant: "default", size: "sm" })
+                      )}
+                    >
+                      Send
+                    </a>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans leading-relaxed">
+                  {emailText}
+                </pre>
+                {selectedStudies.length > 0 && (
+                  <div className="rounded-md bg-[#F4F7F6] border px-4 py-3 space-y-1">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Included case study links
+                    </p>
+                    {selectedStudies.map((cs, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <a
+                          href={cs.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline font-medium"
+                        >
+                          {cs.customer}
+                        </a>
+                        <span className="text-gray-400 text-xs truncate">{cs.url}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
 
       {/* Footer actions */}
       <div className="pb-8 flex items-center justify-between">

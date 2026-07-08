@@ -4,6 +4,7 @@ import { parseJson, stripEmDashes, extractStakeholders } from "@/lib/analysis"
 import {
   KITWAVE_COMPANY,
   KITWAVE_SECTIONS,
+  KITWAVE_RESEARCH_ONLY_SECTIONS,
   KITWAVE_SOURCE_LOG,
   KITWAVE_MEDDPICC,
   KITWAVE_CASE_STUDIES,
@@ -148,6 +149,14 @@ interface DemoCacheEntry {
   caseStudies: MatchedCaseStudy[]
   email: string
   notesStakeholders: ExtractedStakeholder[]
+  // Notes-free variant of `sections` -- served instead of `sections` whenever
+  // the caller has no discovery notes at all (the research-first flow, see
+  // /deal/new). `sections` above was generated from the real AE discovery
+  // transcript for the full-prep-brief demo path and leaks transcript-derived
+  // specifics if served with no notes present. Optional because not every
+  // demo cache entry needs one -- only ones actually used via the research-
+  // first entry point.
+  researchOnlySections?: ResearchSections
 }
 
 const DEMO_CACHE: DemoCacheEntry[] = [
@@ -160,6 +169,7 @@ const DEMO_CACHE: DemoCacheEntry[] = [
     caseStudies: KITWAVE_CASE_STUDIES,
     email: KITWAVE_EMAIL,
     notesStakeholders: KITWAVE_NOTES_STAKEHOLDERS,
+    researchOnlySections: KITWAVE_RESEARCH_ONLY_SECTIONS,
   },
 ]
 
@@ -174,20 +184,21 @@ export function getDemoCache(nameOrText: string): DemoCacheEntry | null {
 // researching" moment entirely. Used standalone by the manual "run research
 // only" deal-page path.
 export async function emitCachedResearch(
-  cache: DemoCacheEntry,
+  sections: ResearchSections,
+  sourceLog: SourceLogEntry[],
   emit: (event: object) => void,
-  delayMs = 500
+  delayMs = 1500
 ): Promise<void> {
   const steps: Array<() => void> = [
-    () => emit({ type: "research_snapshot", data: cache.sections.snapshot }),
-    () => emit({ type: "research_strategic_context", data: cache.sections.strategic_context }),
-    () => emit({ type: "research_operating_model", data: cache.sections.operating_model }),
-    () => emit({ type: "research_stakeholders", data: cache.sections.stakeholders }),
-    () => emit({ type: "research_buying_signals", data: cache.sections.buying_signals }),
-    () => emit({ type: "research_value_drivers", data: cache.sections.value_drivers }),
-    () => emit({ type: "research_risks", data: cache.sections.risks }),
-    () => emit({ type: "research_discovery_questions", data: cache.sections.discovery_questions }),
-    () => emit({ type: "research_source_log", data: cache.sourceLog }),
+    () => emit({ type: "research_snapshot", data: sections.snapshot }),
+    () => emit({ type: "research_strategic_context", data: sections.strategic_context }),
+    () => emit({ type: "research_operating_model", data: sections.operating_model }),
+    () => emit({ type: "research_stakeholders", data: sections.stakeholders }),
+    () => emit({ type: "research_buying_signals", data: sections.buying_signals }),
+    () => emit({ type: "research_value_drivers", data: sections.value_drivers }),
+    () => emit({ type: "research_risks", data: sections.risks }),
+    () => emit({ type: "research_discovery_questions", data: sections.discovery_questions }),
+    () => emit({ type: "research_source_log", data: sourceLog }),
   ]
   for (const step of steps) {
     await new Promise((resolve) => setTimeout(resolve, delayMs))
@@ -202,9 +213,9 @@ export async function emitCachedResearch(
 export async function emitCachedBrief(
   cache: DemoCacheEntry,
   emit: (event: object) => void,
-  delayMs = 500
+  delayMs = 1500
 ): Promise<void> {
-  await emitCachedResearch(cache, emit, delayMs)
+  await emitCachedResearch(cache.sections, cache.sourceLog, emit, delayMs)
   await new Promise((resolve) => setTimeout(resolve, delayMs))
   emit({ type: "meddpicc", data: cache.meddpicc })
   emit({ type: "case_studies", data: cache.caseStudies })
@@ -225,10 +236,21 @@ export async function runResearchOnlyPipeline(params: {
 }): Promise<{ sections: ResearchSections; sourceLog: SourceLogEntry[]; notesStakeholders: ExtractedStakeholder[] }> {
   const { company, discoveryNotes, product, emit } = params
   const demoCache = getDemoCache(company.name)
+  // No notes at all (research-first flow, see /deal/new) -- serve the notes-
+  // free variant if this cache entry has one, rather than the full-prep
+  // sections, which were generated from real AE discovery notes and would
+  // leak transcript-derived specifics into what's supposed to be pure
+  // public-research output.
+  const useResearchOnly = demoCache && !discoveryNotes.trim() && demoCache.researchOnlySections
 
   const [research, notesStakeholders] = await Promise.all([
     demoCache
-      ? emitCachedResearch(demoCache, emit).then(() => ({ sections: demoCache.sections, sourceLog: demoCache.sourceLog }))
+      ? (async (): Promise<{ sections: ResearchSections; sourceLog: SourceLogEntry[] }> => {
+          const sections = useResearchOnly ? demoCache.researchOnlySections! : demoCache.sections
+          const sourceLog = useResearchOnly ? buildSourceLog(sections) : demoCache.sourceLog
+          await emitCachedResearch(sections, sourceLog, emit)
+          return { sections, sourceLog }
+        })()
       : (async (): Promise<{ sections: ResearchSections; sourceLog: SourceLogEntry[] }> => {
           const [snapshotAndContext, operatingModel, stakeholdersAndSignals, driversAndRisks] = await Promise.all([
             researchSnapshotAndContext(company).then((r) => {

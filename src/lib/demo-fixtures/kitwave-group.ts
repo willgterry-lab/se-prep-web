@@ -7,7 +7,17 @@
 // live demo under ~20s: research alone still needed ~25s of real, unavoidable
 // MEDDPICC/case-study/email generation time downstream once the notes are
 // fixed and known in advance, so that gets cached too.
-import type { ResolvedCompany, ResearchSections, SourceLogEntry, MeddpiccScore, MatchedCaseStudy, ExtractedStakeholder } from "@/types"
+import type {
+  ResolvedCompany,
+  ResearchSections,
+  SourceLogEntry,
+  MeddpiccScore,
+  MatchedCaseStudy,
+  ExtractedStakeholder,
+  ValueDriverSection,
+  RisksSection,
+  DiscoveryQuestionsSection,
+} from "@/types"
 
 export const KITWAVE_COMPANY: ResolvedCompany = {
   "name": "Kitwave Group plc",
@@ -869,6 +879,380 @@ export const KITWAVE_SECTIONS: ResearchSections = {
       }
     ]
   }
+}
+
+// Research-only variant of value_drivers/risks/discovery_questions -- the rest
+// of KITWAVE_SECTIONS above (snapshot/strategic_context/operating_model/
+// stakeholders/buying_signals) is already notes-independent by construction
+// (researchSnapshotAndContext/researchOperatingModel/researchStakeholdersAndSignals
+// take no discovery_notes param) and is reused as-is. Only these three sections
+// are notes-aware, and KITWAVE_SECTIONS' versions were generated from the real
+// AE discovery transcript for the full-prep-brief demo path -- serving that
+// straight to the research-first flow (no notes yet, see /deal/new) leaked
+// transcript-derived specifics (Dawn's near-resignation, Andrea Kowalczyk, the
+// REKKI trial, etc.) into what's supposed to be pure public-research output.
+// Generated for real (discovery_notes: "", same product context, same live
+// web_search) via a temporary debug route, same process used to build the
+// rest of this fixture -- see git history.
+export const KITWAVE_RESEARCH_ONLY_VALUE_DRIVERS: ValueDriverSection = {
+  "most_visible_pain_headline": "Kitwave is absorbing 15 acquisitions across 37 depots while managing order intake from six distinct channels (EDI, eCommerce, app, telesales, email, rep ordering) - the per-order cost and error rate of the undigitised tail (email, telesales, phone) are the highest-leverage cost and accuracy problem in the business right now, and the new PE owner (OEP, March 2026) will be scrutinising exactly this.",
+  "suggested_demo_angle": "Show OrderAgent processing an inbound email/WhatsApp/voicemail order in under 15 seconds with 97%+ accuracy, then cut to the telesales dashboard where a rep upsells on the same call rather than transcribing - anchor the time saving to Kitwave's scale: 4,800 deliveries/day implies thousands of inbound orders per day, so even 60 seconds saved per order compounds to hundreds of staff-hours weekly.",
+  "hypotheses": [
+    {
+      "driver_statement": "Automating unstructured inbound orders (email, voicemail, telesales transcription) across 37 depots and six order channels will cut per-order processing labour cost materially and free telesales headcount to do outbound selling rather than order-taking.",
+      "taxonomy": "lower_cost",
+      "evidence": [
+        {
+          "text": "We offer a variety of ways to order capture including EDI, an award winning e-Commerce Website, App Sales, Telesales, Email Ordering and Electronic Rep Ordering.",
+          "origin": "web",
+          "source_tier": "company_site",
+          "url": "https://www.kitwave.co.uk/",
+          "retrieved_at": "2026-03-17"
+        },
+        {
+          "text": "As previously reported the impact of the changes to employers NIC and minimum wage announced in the October 2024 budget will add c.£2 million to the Group's annual operating costs.",
+          "origin": "web",
+          "source_tier": "filings",
+          "url": "https://www.investegate.co.uk/announcement/rns/kitwave-group--kitw/final-results/8761355",
+          "retrieved_at": "2025-03-04"
+        }
+      ],
+      "facts": [
+        "Kitwave operates six distinct order intake channels including telesales and email ordering, confirmed on the company homepage.",
+        "Employer NIC and minimum wage rises add c.£2m to annual operating costs from April 2025, creating direct board-level pressure to reduce labour intensity in order processing.",
+        "Kitwave fulfils over 4,800 deliveries per day across 37 depots, implying a very high daily order volume that multiplies any per-order inefficiency."
+      ],
+      "inferences": [
+        "Email and telesales channels are likely the highest-labour, highest-error-rate intake methods in the mix; without AI automation these require staff to manually key orders into the WMS.",
+        "With 15 acquired businesses, each with its own legacy ordering habits, the unstructured channel mix is probably wider in practice than the six formal channels suggest.",
+        "The £2m NIC headwind gives the CFO a live cost-reduction mandate that a measurable order-automation ROI could attach to directly."
+      ],
+      "product_mapping": "A dedicated AI platform built for food & beverage wholesalers that automates order processing, drives sales efficiency, and powers modern ecommerce - specifically, Choco's OrderAgent ingests email, WhatsApp, and voicemail orders and converts them to confirmed picks in seconds, eliminating the manual transcription burden on telesales teams.",
+      "confidence": "high",
+      "matched_case_study": {
+        "url": "https://choco.com/uk/stories/case-studies/choco-ai-case-study-crowbond-foodservice",
+        "title": "Crowbond Foodservice + Choco",
+        "summary": "With Choco AI, Crowbond doubled daily orders from 100 to 200, added 200+ new accounts, and grew monthly orders by 1,000+.",
+        "customer": "Crowbond Foodservice",
+        "industry": "Food Wholesale / Distribution",
+        "headline_pain": "Manual processing of 50–100 orders a day was no longer sustainable as rapid growth added over 200 new accounts from recent acquisitions.",
+        "relevance_reason": "Crowbond's pain - manual order processing becoming unsustainable as rapid acquisition-driven growth added new accounts - directly mirrors Kitwave's post-acquisition scaling challenge across 37 depots.",
+        "relevance_score": 8,
+        "one_liner": "Crowbond doubled order capacity after adding 200+ accounts via acquisitions, exactly the post-M&A order-ops scaling problem Kitwave faces at group level."
+      },
+      "validation_question": "Across your telesales and email channels today, what percentage of inbound orders still require a staff member to manually key them into the WMS - and do you have a benchmark for the average time that takes per order?"
+    },
+    {
+      "driver_statement": "Kitwave's private-equity-backed acceleration under OEP demands a scalable, group-wide digital ordering platform that can onboard the full 46,000-customer base - including the legacy books of Creed, Total Foodservice, and other acquired entities - without proportionally growing headcount.",
+      "taxonomy": "retain_and_grow",
+      "evidence": [
+        {
+          "text": "The Acquisition is supported by a clear and compelling strategic rationale, including: Strengthening Kitwave's position within the fragmented wholesale distribution market; Supporting accelerated growth in the highly attractive foodservice segment; Enhancing operational efficiency and digital capability.",
+          "origin": "web",
+          "source_tier": "filings",
+          "url": "https://www.investegate.co.uk/announcement/rns/kitwave-group--kitw/recommended-cash-acquisition-of-kitwave-group-plc/9374535",
+          "retrieved_at": "2026-01-22"
+        },
+        {
+          "text": "Digital orders > 55% of transactions (early 2025), boosting online channel revenue mix.",
+          "origin": "web",
+          "source_tier": "news",
+          "url": "https://matrixbcg.com/blogs/growth-strategy/kitwave",
+          "retrieved_at": "2026-04-08"
+        }
+      ],
+      "facts": [
+        "OEP's stated rationale for the March 2026 acquisition explicitly includes 'enhancing operational efficiency and digital capability' as a strategic pillar.",
+        "Digital orders were reported at >55% of transactions in early 2025, meaning ~45% of volume still flows through non-digital channels.",
+        "Kitwave serves ~46,000 customers across three divisions with 15 acquisitions completed since 2011, each bringing its own ordering habits."
+      ],
+      "inferences": [
+        "A PE owner with a buy-and-build thesis will set a target to close the digital gap quickly; pushing digital order share from ~55% toward 80%+ is likely an OEP portfolio KPI.",
+        "Each acquired business's customer base needs migration to a common platform - the larger Creed book (a significant foodservice operation) has barely begun integration.",
+        "Customers not yet on digital channels are the most churn-exposed because they have no workflow lock-in; digitising them raises switching cost."
+      ],
+      "product_mapping": "A dedicated AI platform built for food & beverage wholesalers that automates order processing, drives sales efficiency, and powers modern ecommerce - Choco's eCommerce layer and onboarding playbook can migrate analogue accounts to a digital ordering experience without requiring the customer to change their behaviour (they can still send a WhatsApp; Choco handles the rest).",
+      "confidence": "high",
+      "matched_case_study": {
+        "url": "https://choco.com/uk/stories/case-studies/t-quality-grows-with-choco",
+        "title": "T. Quality + Choco",
+        "summary": "T. Quality scaled sales across 11 depots, onboarded every customer onto Choco, and turned AI prospecting and quoting into a competitive edge.",
+        "customer": "T. Quality",
+        "industry": "Food Distribution",
+        "headline_pain": "Scaling sales efficiently across multiple depots while onboarding all customers onto a digital platform was a key challenge.",
+        "relevance_reason": "T. Quality's multi-depot, full-customer-base digital onboarding challenge is structurally identical to Kitwave's 37-depot, 46,000-customer digitisation imperative under new PE ownership.",
+        "relevance_score": 9,
+        "one_liner": "T. Quality onboarded every customer across 11 depots onto Choco - a direct analogue to Kitwave's need to digitise its full 46,000-account base across 37 depots."
+      },
+      "validation_question": "Has OEP set an explicit digital order-share target for FY25/26, and which divisions or acquired businesses still have the lowest online penetration today?"
+    },
+    {
+      "driver_statement": "Newly acquired foodservice businesses (Creed, Total Foodservice, WestCountry) each brought different ordering processes and customer expectations; integrating them onto a single AI order layer would compress integration timelines and protect the service-level KPIs (98% OTIF) that justify acquisition multiples.",
+      "taxonomy": "lower_cost",
+      "evidence": [
+        {
+          "text": "Whilst we have navigated some operational changes, particularly the transition to a new, larger depot in the South West and the integration of multiple businesses, we are pleased with the solid progress made.",
+          "origin": "web",
+          "source_tier": "filings",
+          "url": "https://data.fca.org.uk/artefacts/NSM/RNS/5718362.html",
+          "retrieved_at": "2025-07-01"
+        },
+        {
+          "text": "We also made some key strategic decisions to improve operational efficiencies in the Period, including investment in the new Foodservice distribution centre in the South West and our voice-picking technology at the Northern ambient hub.",
+          "origin": "web",
+          "source_tier": "filings",
+          "url": "https://data.fca.org.uk/artefacts/NSM/RNS/5419804.html"
+        }
+      ],
+      "facts": [
+        "CEO Ben Maxted explicitly flagged 'navigating operational changes' from integrating multiple businesses simultaneously in the H1 FY25 results (July 2025).",
+        "Kitwave invested in voice-picking technology at the Northern ambient hub in FY24, demonstrating a board-level willingness to invest in operational automation to support integration."
+      ],
+      "inferences": [
+        "Each acquired entity (Creed, Total Foodservice, WestCountry) likely arrived with its own mix of phone, email, and portal ordering - without a unified intake layer, integration creates duplication of telesales resource.",
+        "Integration friction that delays synergy realisation is the main risk OEP will want to mitigate quickly; a common order-processing platform reduces the number of systems and people that need harmonising."
+      ],
+      "product_mapping": "A dedicated AI platform built for food & beverage wholesalers that automates order processing, drives sales efficiency, and powers modern ecommerce - Choco's multi-entity deployment model allows each depot brand (Creed, WestCountry, Total Foodservice) to maintain its customer-facing identity while routing all orders through a single AI processing layer.",
+      "confidence": "medium",
+      "matched_case_study": {
+        "url": "https://choco.com/uk/stories/case-studies",
+        "title": "Reach Food Group + Choco",
+        "summary": "Using Choco AI, Reach Food Group achieved 96% order accuracy and reduced processing time from 40 hours to just 4 hours within 3 weeks.",
+        "customer": "Reach Food Group",
+        "industry": "Food Distribution",
+        "headline_pain": "Order processing was taking up to 40 hours and accuracy was a persistent challenge.",
+        "relevance_reason": "Reach Food Group's rapid accuracy and throughput improvement after deploying Choco AI is directly relevant to Kitwave's post-acquisition integration pressure, where order accuracy underpins the 98% OTIF service-level KPI.",
+        "relevance_score": 7,
+        "one_liner": "Reach Food Group cut order processing from 40 hours to 4 hours in three weeks - the kind of fast-time-to-value Kitwave needs while integrating three foodservice acquisitions simultaneously."
+      },
+      "validation_question": "In the Creed and Total Foodservice businesses specifically, what proportion of orders still arrive via phone or email, and have you benchmarked the processing cost per order against your legacy Kitwave ambient division?"
+    },
+    {
+      "driver_statement": "With 5% organic revenue growth in FY24 and a target run-rate of £1bn by 2027, Kitwave's telesales teams need to shift from reactive order-taking to proactive outbound selling - AI-assisted ordering frees that capacity and gives reps data-driven prompts to grow basket size.",
+      "taxonomy": "retain_and_grow",
+      "evidence": [
+        {
+          "text": "Kitwave business model analysis shows a strategy to create a contiguous national footprint by combining localised service with group-scale efficiencies; the group targets an annual revenue run-rate approaching £1,000,000,000 by 2027.",
+          "origin": "web",
+          "source_tier": "news",
+          "url": "https://matrixbcg.com/blogs/growth-strategy/kitwave",
+          "retrieved_at": "2026-04-08"
+        },
+        {
+          "text": "Standardised scripts increase cross-sell and promotional uptake, driving higher average order value and customer retention.",
+          "origin": "web",
+          "source_tier": "news",
+          "url": "https://portersfiveforce.com/products/kitwave-business-model-canvas",
+          "retrieved_at": "2025-12-07"
+        }
+      ],
+      "facts": [
+        "Kitwave targets a revenue run-rate approaching £1bn by 2027, requiring sustained outperformance of organic growth if M&A activity slows under PE ownership.",
+        "Telesales teams already use standardised cross-sell scripts - the infrastructure for AI-assisted upsell prompting exists in the current sales motion."
+      ],
+      "inferences": [
+        "If telesales reps spend the majority of their time transcribing and confirming routine reorders, only a fraction of their capacity is available for genuine outbound growth activity.",
+        "Choco's AI order processing could shift the telesales role from reactive order transcription to proactive basket-building, directly supporting organic revenue growth targets."
+      ],
+      "product_mapping": "A dedicated AI platform built for food & beverage wholesalers that automates order processing, drives sales efficiency, and powers modern ecommerce - Choco's AI handles routine reorders automatically, surfacing only exceptions and upsell opportunities to the telesales rep, converting order-takers into growth-drivers.",
+      "confidence": "medium",
+      "matched_case_study": {
+        "url": "https://choco.com/us/stories/case-studies/krystal-produce-success-story",
+        "title": "Krystal Produce + Choco",
+        "summary": "Integrating Choco AI reduced each order to 13 seconds to process, saving 15 hours per week and $23,000 per year with one client alone.",
+        "customer": "Krystal Produce",
+        "industry": "Food Distribution / Produce",
+        "headline_pain": "Labor shortages and inefficiencies of manual order processing were hampering operations and service quality.",
+        "relevance_reason": "Krystal Produce's quantified labour savings per client translate directly to Kitwave's context where NIC/wage inflation has created a board-level mandate to reduce processing headcount costs.",
+        "relevance_score": 7,
+        "one_liner": "Krystal Produce saved 15 hours per week and $23k per year with one client - applied to Kitwave's 46,000-account base, the aggregate labour saving is substantial."
+      },
+      "validation_question": "What percentage of your telesales team's time today is spent processing routine reorders versus proactive outbound sales or upsell activity - and is there a recognised gap versus target?"
+    },
+    {
+      "driver_statement": "Kitwave's acquisition of Creed Foodservice (the largest UK independent foodservice wholesaler at the time) brought a large, high-margin customer book that demands best-in-class digital ordering experience to prevent churn to Bidfood or Brakes post-transition.",
+      "taxonomy": "retain_and_grow",
+      "evidence": [
+        {
+          "text": "The Creed Foodservice investment has strengthened our management capabilities and advanced the Group's objective of delivering a more streamlined, scalable platform in the Foodservice marketplace.",
+          "origin": "web",
+          "source_tier": "filings",
+          "url": "https://data.fca.org.uk/artefacts/NSM/RNS/5718362.html",
+          "retrieved_at": "2025-07-01"
+        },
+        {
+          "text": "H1-FY25 foodservice GM 28.4 percent.",
+          "origin": "web",
+          "source_tier": "news",
+          "url": "https://tscsw.substack.com/p/kitwave-group-overview-and-highlights",
+          "retrieved_at": "2025-09-10"
+        }
+      ],
+      "facts": [
+        "Foodservice gross margin is 28.4% in H1 FY25 - substantially higher than group average (22.3%) - making this division the highest-value book to protect.",
+        "Creed was described by management as the vehicle for delivering 'a more streamlined, scalable platform in the Foodservice marketplace' - digital ordering capability is explicitly part of that mandate."
+      ],
+      "inferences": [
+        "Creed's foodservice customers (bars, restaurants, contract caterers) have alternatives in Bidfood and Brakes who offer mature digital ordering experiences; any perceived degradation in service during integration creates a churn window.",
+        "A superior digital ordering experience is a retention tool that also locks customers into Kitwave's ecosystem, raising switching costs and supporting the premium margin profile of the Foodservice division."
+      ],
+      "product_mapping": "A dedicated AI platform built for food & beverage wholesalers that automates order processing, drives sales efficiency, and powers modern ecommerce - Choco's customer-facing eCommerce layer gives Creed's foodservice customers a modern, frictionless ordering experience while the AI back-end automates fulfilment, reducing the risk of service degradation during integration.",
+      "confidence": "medium",
+      "matched_case_study": {
+        "url": "https://choco.com/uk/stories/case-studies/fb-the-wholesaler-digitize-every-order-and-unlock-growth",
+        "title": "FB the Wholesaler + Choco",
+        "summary": "Adopting Choco's OrderAgent and eCommerce enabled FB the Wholesaler to digitize every order channel and achieve 250% dairy sales growth.",
+        "customer": "FB the Wholesaler",
+        "industry": "Food Wholesale / Distribution",
+        "headline_pain": "Orders pouring in from calls, voicemails, texts, and handwritten notes caused constant errors, rescheduled deliveries, and wasted fuel and time.",
+        "relevance_reason": "FB the Wholesaler's multi-channel order chaos and the growth unlocked by full digitisation mirrors the Creed integration challenge, where consolidating fragmented order intake into one platform is essential to preserve the high-margin foodservice customer base.",
+        "relevance_score": 8,
+        "one_liner": "FB the Wholesaler digitised every order channel with Choco and achieved 250% category growth - the kind of outcome Kitwave needs to justify the £60-70m Creed acquisition multiple."
+      },
+      "validation_question": "Since the Creed acquisition closed, have you seen any elevated churn signals or customer satisfaction dips in the foodservice book, and what ordering experience are those customers on today?"
+    }
+  ]
+}
+
+export const KITWAVE_RESEARCH_ONLY_RISKS: RisksSection = {
+  "risks": [
+    {
+      "pattern": "competitor_in_account",
+      "text": "Ordertools (by Foodservice Online) is already live across multiple Kitwave subsidiary brands. WestCountry Foodservice, Turner & Wrights, Creed Foodservice, and Total Foodservice are all named Ordertools customers on the vendor's own blog and in trade press. This means the eCommerce ordering layer for the Foodservice and retail divisions is currently occupied by a direct competitor. The conversation must clarify which parts of the order stack Ordertools covers (eCommerce portal / telesales assist), whether the contract is group-wide or entity-level, and where the gaps are - particularly for unstructured inbound channels (email, WhatsApp, voicemail) that Ordertools does not natively automate with AI.",
+      "evidence": [
+        {
+          "text": "Wholesalers including Savona Foodservice, Woods Foodservice and WestCountry Foodservice (part of Kitwave Group PLC) have also successfully launched their platforms, with other foodservice and retail wholesalers preparing to launch in the coming months.",
+          "origin": "web",
+          "source_tier": "news",
+          "url": "https://www.fwd.co.uk/wholesale-news/2024/11/15/ordertools-innovate-at-pace/",
+          "retrieved_at": "2024-11-15"
+        },
+        {
+          "text": "Kitwave Group, a long standing customer of Foodservice Online, has chosen Ordertools to power the ecommerce",
+          "origin": "web",
+          "source_tier": "news",
+          "url": "https://ordertools.com/blog/",
+          "retrieved_at": "2024-11-13"
+        }
+      ]
+    },
+    {
+      "pattern": "no_compelling_event",
+      "text": "There is no evidence of a specific project-trigger event (e.g. a live RFP, a named digital transformation programme, or a stated technology replacement date) that would create urgency for a Choco engagement on a defined timeline. However, two structural urgency drivers are present and should be tested on the call: (1) the OEP private equity acquisition completed March 2026 typically brings a 100-day operational review with explicit technology and margin improvement mandates - this is the most likely live window; (2) the £2m NIC/minimum-wage cost headwind from April 2025 creates a board-level cost-efficiency mandate that an order automation ROI model could attach to directly.",
+      "evidence": [
+        {
+          "text": "OEP Capital Advisors via Kite UK Bidco Limited (BidCo) agrees cash acquisition of Kitwave Group Plc … the High Court of Justice has sanctioned the Scheme … Kitwave's shares were cancelled from the AIM market as of today.",
+          "origin": "web",
+          "source_tier": "company_site",
+          "url": "https://www.kitwave.co.uk/oep-capital-advisors-via-kite-uk-bidco-limited-bidco-agrees-cash-acquisition-of-kitwave-group-plc-kitwave/",
+          "retrieved_at": "2026-03-13"
+        },
+        {
+          "text": "The impact of the changes to employers NIC and minimum wage announced in the October 2024 budget will add c.£2 million to the Group's annual operating costs.",
+          "origin": "web",
+          "source_tier": "filings",
+          "url": "https://www.investegate.co.uk/announcement/rns/kitwave-group--kitw/final-results/8761355",
+          "retrieved_at": "2025-03-04"
+        }
+      ],
+      "cost_of_doing_nothing_seed": "Kitwave processes 4,800+ deliveries per day across 37 depots; if even 30% of orders still arrive via manual channels (email/phone) and each takes 2 minutes to process, that is approximately 2,880 staff-minutes (~48 staff-hours) per day in pure transcription labour - at post-April-2025 wage rates this compounds to a significant annual cost that grows with every acquisition bolt-on unless automated."
+    }
+  ]
+}
+
+export const KITWAVE_RESEARCH_ONLY_DISCOVERY_QUESTIONS: DiscoveryQuestionsSection = {
+  "questions": [
+    {
+      "question": "Since the OEP acquisition completed in March, has there been a formal operational review or 100-day plan that has set specific targets around cost reduction, digital capability, or order processing efficiency?",
+      "meddpicc_element": "identify_pain",
+      "hypothesis_ref": "Kitwave's private-equity-backed acceleration under OEP demands a scalable, group-wide digital ordering platform that can onboard the full 46,000-customer base - including the legacy books of Creed, Total Foodservice, and other acquired entities - without proportionally growing headcount."
+    },
+    {
+      "question": "Who within the new OEP-backed structure owns the mandate for operational efficiency and digital transformation - is that still Ben Maxted and Mark Earl, or has OEP placed anyone into the business in an operational capacity?",
+      "meddpicc_element": "economic_buyer"
+    },
+    {
+      "question": "We know Ordertools is live across WestCountry, Creed, Turner & Wrights, and Total Foodservice for eCommerce ordering - is that deployment group-wide now, is it entity-level with separate contracts, and how satisfied is the business with what it covers?",
+      "meddpicc_element": "competition",
+      "hypothesis_ref": "Newly acquired foodservice businesses (Creed, Total Foodservice, WestCountry) each brought different ordering processes and customer expectations; integrating them onto a single AI order layer would compress integration timelines and protect the service-level KPIs (98% OTIF) that justify acquisition multiples."
+    },
+    {
+      "question": "Ordertools handles the eCommerce portal layer - what happens to orders that still come in via email, voicemail, or phone today? Is there a separate system or team processing those, and do you have a sense of what share of total order volume they represent?",
+      "meddpicc_element": "identify_pain",
+      "hypothesis_ref": "Automating unstructured inbound orders (email, voicemail, telesales transcription) across 37 depots and six order channels will cut per-order processing labour cost materially and free telesales headcount to do outbound selling rather than order-taking."
+    },
+    {
+      "question": "Across your telesales and email channels today, what percentage of inbound orders still require a staff member to manually key them into the WMS, and do you have any benchmark for how long that takes per order on average?",
+      "meddpicc_element": "metrics",
+      "hypothesis_ref": "Automating unstructured inbound orders (email, voicemail, telesales transcription) across 37 depots and six order channels will cut per-order processing labour cost materially and free telesales headcount to do outbound selling rather than order-taking."
+    },
+    {
+      "question": "The £2m NIC and minimum wage headwind was called out explicitly at board level - has that translated into a specific cost-reduction target for order processing or telesales operations, and is someone accountable for finding those savings?",
+      "meddpicc_element": "identify_pain",
+      "hypothesis_ref": "Automating unstructured inbound orders (email, voicemail, telesales transcription) across 37 depots and six order channels will cut per-order processing labour cost materially and free telesales headcount to do outbound selling rather than order-taking."
+    },
+    {
+      "question": "You reported digital orders at just over 55% of transactions in early 2025 - has OEP set an explicit target to increase that share, and which divisions or acquired businesses are furthest below the group average on digital penetration?",
+      "meddpicc_element": "metrics",
+      "hypothesis_ref": "Kitwave's private-equity-backed acceleration under OEP demands a scalable, group-wide digital ordering platform that can onboard the full 46,000-customer base - including the legacy books of Creed, Total Foodservice, and other acquired entities - without proportionally growing headcount."
+    },
+    {
+      "question": "In the Creed and Total Foodservice businesses specifically, what proportion of orders are still arriving via phone or email rather than a digital channel, and has anyone modelled the processing cost per order compared to the legacy Kitwave ambient division?",
+      "meddpicc_element": "identify_pain",
+      "hypothesis_ref": "Newly acquired foodservice businesses (Creed, Total Foodservice, WestCountry) each brought different ordering processes and customer expectations; integrating them onto a single AI order layer would compress integration timelines and protect the service-level KPIs (98% OTIF) that justify acquisition multiples."
+    },
+    {
+      "question": "Since the Creed acquisition closed and the transition has been underway, have you seen any elevated churn signals or satisfaction dips in the foodservice customer book - and what ordering experience are those customers on today compared to what they had under Creed independently?",
+      "meddpicc_element": "identify_pain",
+      "hypothesis_ref": "Kitwave's acquisition of Creed Foodservice brought a large, high-margin customer book that demands best-in-class digital ordering experience to prevent churn to Bidfood or Brakes post-transition."
+    },
+    {
+      "question": "What percentage of your telesales team's time today is spent processing and transcribing routine reorders versus proactive outbound sales, upsell, or customer development activity - and is there a recognised gap versus where you want that ratio to be?",
+      "meddpicc_element": "identify_pain",
+      "hypothesis_ref": "With 5% organic revenue growth in FY24 and a target run-rate of £1bn by 2027, Kitwave's telesales teams need to shift from reactive order-taking to proactive outbound selling - AI-assisted ordering frees that capacity and gives reps data-driven prompts to grow basket size."
+    },
+    {
+      "question": "The Creed ERP integration was targeted for completion in early 2026 - has that landed on schedule, and are all depots now on a single ERP, or are there still legacy systems running in parallel across parts of the group?",
+      "meddpicc_element": "decision_criteria",
+      "hypothesis_ref": "Newly acquired foodservice businesses (Creed, Total Foodservice, WestCountry) each brought different ordering processes and customer expectations; integrating them onto a single AI order layer would compress integration timelines and protect the service-level KPIs (98% OTIF) that justify acquisition multiples."
+    },
+    {
+      "question": "When Kitwave evaluates a technology or operations solution at this scale, who needs to be involved in that decision - is it the CEO and CFO, does the Group IT Director own the vendor selection, and does OEP have approval rights above a certain spend threshold?",
+      "meddpicc_element": "decision_process"
+    },
+    {
+      "question": "Is there an internal champion or project owner who would be accountable for a group-wide order automation initiative day-to-day - and would that sit with IT under Alan, with the commercial team under Michael, or within each divisional MD?",
+      "meddpicc_element": "champion"
+    },
+    {
+      "question": "If you were evaluating a solution in this space, what would the most important criteria be - accuracy and error reduction, speed of implementation across depots, integration with your existing ERP and Ordertools setup, or demonstrable cost savings?",
+      "meddpicc_element": "decision_criteria"
+    },
+    {
+      "question": "What does a typical procurement and contracting process look like for a technology investment of this type - do you run a formal RFP, is there a preferred vendor list, and roughly how long does it take from a first conversation to a signed agreement?",
+      "meddpicc_element": "paper_process"
+    },
+    {
+      "question": "If we could show a credible ROI model anchored to your order volumes and current labour costs, what would need to be true for that to become a priority initiative in the next six months rather than something that gets reviewed next budget cycle?",
+      "meddpicc_element": "metrics"
+    }
+  ]
+}
+
+// Composed research-only sections -- served by the demo cache when
+// discoveryNotes is empty (see getDemoCache/runResearchOnlyPipeline in
+// research.ts). Source log for this variant is computed at cache-serve time
+// via buildSourceLog, not hardcoded here, to avoid a circular import back to
+// research.ts.
+export const KITWAVE_RESEARCH_ONLY_SECTIONS: ResearchSections = {
+  snapshot: KITWAVE_SECTIONS.snapshot,
+  strategic_context: KITWAVE_SECTIONS.strategic_context,
+  operating_model: KITWAVE_SECTIONS.operating_model,
+  value_drivers: KITWAVE_RESEARCH_ONLY_VALUE_DRIVERS,
+  stakeholders: KITWAVE_SECTIONS.stakeholders,
+  buying_signals: KITWAVE_SECTIONS.buying_signals,
+  risks: KITWAVE_RESEARCH_ONLY_RISKS,
+  discovery_questions: KITWAVE_RESEARCH_ONLY_DISCOVERY_QUESTIONS,
 }
 
 export const KITWAVE_SOURCE_LOG: SourceLogEntry[] = [

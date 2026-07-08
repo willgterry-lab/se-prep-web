@@ -1673,9 +1673,6 @@ export function DealView({
       {/* Lifecycle progress */}
       <DealProgressBar stage={deal.stage} />
 
-      {/* Prospect research */}
-      <ProspectResearchSection dealId={deal.id} researchBriefs={researchBriefs} />
-
       {/* Stakeholders */}
       <StakeholdersCard dealId={deal.id} initialStakeholders={stakeholders} />
 
@@ -1763,11 +1760,16 @@ export function DealView({
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="research">Research</TabsTrigger>
           <TabsTrigger value="risks">Risks</TabsTrigger>
           <TabsTrigger value="pov">POV</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
           <TabsTrigger value="ve">VE</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="research" className="mt-4">
+          <ProspectResearchSection dealId={deal.id} researchBriefs={researchBriefs} />
+        </TabsContent>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
           {latestBrief?.meddpicc && <MeddpiccGridCard meddpicc={latestBrief.meddpicc} />}

@@ -620,17 +620,17 @@ export function ResearchBriefFullView({ brief }: { brief: ResearchBrief }) {
       </div>
 
       <Tabs defaultValue="summary">
-        <TabsList variant="line" className="flex-wrap h-auto">
-          <TabsTrigger value="summary">Summary</TabsTrigger>
-          <TabsTrigger value="snapshot">Snapshot</TabsTrigger>
-          <TabsTrigger value="strategic_context">Strategy</TabsTrigger>
-          <TabsTrigger value="operating_model">Operating model</TabsTrigger>
-          <TabsTrigger value="value_drivers">Value drivers</TabsTrigger>
-          <TabsTrigger value="stakeholders">Stakeholders</TabsTrigger>
-          <TabsTrigger value="buying_signals">Buying signals</TabsTrigger>
-          <TabsTrigger value="risks">Risks</TabsTrigger>
-          <TabsTrigger value="discovery_questions">Questions</TabsTrigger>
-          <TabsTrigger value="source_log">Sources</TabsTrigger>
+        <TabsList variant="line" className="w-full flex-nowrap justify-start overflow-x-auto">
+          <TabsTrigger value="summary" className="shrink-0">Summary</TabsTrigger>
+          <TabsTrigger value="snapshot" className="shrink-0">Snapshot</TabsTrigger>
+          <TabsTrigger value="strategic_context" className="shrink-0">Strategy</TabsTrigger>
+          <TabsTrigger value="operating_model" className="shrink-0">Operating model</TabsTrigger>
+          <TabsTrigger value="value_drivers" className="shrink-0">Value drivers</TabsTrigger>
+          <TabsTrigger value="stakeholders" className="shrink-0">Stakeholders</TabsTrigger>
+          <TabsTrigger value="buying_signals" className="shrink-0">Buying signals</TabsTrigger>
+          <TabsTrigger value="risks" className="shrink-0">Risks</TabsTrigger>
+          <TabsTrigger value="discovery_questions" className="shrink-0">Questions</TabsTrigger>
+          <TabsTrigger value="source_log" className="shrink-0">Sources</TabsTrigger>
         </TabsList>
 
         <TabsContent value="summary" className="mt-3">
