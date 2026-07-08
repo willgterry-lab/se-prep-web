@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk"
 import { anthropic, MODEL } from "@/lib/anthropic"
 import type {
   ProductContext,
@@ -90,6 +91,31 @@ export function parseJson<T>(raw: string): T {
     `Failed to parse JSON from Claude response (${trimmed.length} chars): ` +
     `START: ${trimmed.slice(0, 300)} END: ${trimmed.slice(-200)}`
   )
+}
+
+// Retries once on a parse failure -- for calls whose prompt asks for verbatim
+// quotes copied straight from a transcript/notes (evidence fields, completed-
+// task evidence, etc). When the source text itself contains a quotation mark,
+// the model occasionally fails to escape it in the JSON string, producing a
+// response that's complete (proper closing brackets) but still invalid JSON.
+// Confirmed non-deterministic by replaying an identical failing request and
+// getting a clean response back (same fix already proven in research.ts's
+// createAndParse for a related failure mode) -- a plain retry is the correct,
+// cheap fix, not a smarter parser trying to repair broken JSON.
+async function createAndParseJson<T>(
+  params: Anthropic.MessageCreateParamsNonStreaming,
+  attempts = 2
+): Promise<T> {
+  let lastError: unknown
+  for (let i = 0; i < attempts; i++) {
+    const message = await anthropic.messages.create(params)
+    try {
+      return parseJson<T>(message.content[0].type === "text" ? message.content[0].text : "[]")
+    } catch (e) {
+      lastError = e
+    }
+  }
+  throw lastError
 }
 
 export function computeDelta(prev: MeddpiccScore, curr: MeddpiccScore): MeddpiccDelta {
@@ -498,7 +524,7 @@ export async function detectCompletedTasks(
 ): Promise<CompletedTaskCandidate[]> {
   if (!openTasks.length) return []
 
-  const message = await anthropic.messages.create({
+  return createAndParseJson<CompletedTaskCandidate[]>({
     model: MODEL,
     // Was 1024 -- too tight once a deal accumulates several open tasks, each
     // completion candidate carrying a full verbatim evidence quote from the
@@ -530,14 +556,11 @@ Return ONLY a valid JSON array containing only the tasks you have clear evidence
 Rules:
 - Only include a task if the transcript explicitly confirms it is done. Silence about a task is not evidence it was completed.
 - evidence must be a verbatim quote from the transcript.
+- If a verbatim quote itself contains double-quote characters, escape them properly as \\" in the JSON string.
 - Never invent completions. Return an empty array [] if none are clearly confirmed.`,
       },
     ],
   })
-
-  return parseJson<CompletedTaskCandidate[]>(
-    message.content[0].type === "text" ? message.content[0].text : "[]"
-  )
 }
 
 // Best-effort extraction of the actual call date from the transcript itself
