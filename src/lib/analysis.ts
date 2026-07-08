@@ -500,7 +500,12 @@ export async function detectCompletedTasks(
 
   const message = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 1024,
+    // Was 1024 -- too tight once a deal accumulates several open tasks, each
+    // completion candidate carrying a full verbatim evidence quote from the
+    // transcript. Real production failure: response cut off mid-JSON with no
+    // closing bracket (all three parseJson fallbacks failed), same class of
+    // bug as the other max_tokens truncations documented in this file.
+    max_tokens: 2048,
     messages: [
       {
         role: "user",
