@@ -1,5 +1,93 @@
 # Session log
 
+## Current state (2026-07-08, live demo QA pass on the research-first flow — shutdown, session closed)
+
+**Session ended cleanly, dev server stopped, working tree clean, everything pushed
+and confirmed live.** This continues directly from the entry below (same day) --
+that entry built items 2+3 of "Improvements to SE Agent"; this one is the live
+QA pass on top of that work, done with the user clicking through the deployed
+app and reporting issues back one at a time.
+
+### What happened, in order (6 commits this sub-session, all pushed and
+verified `Ready` + aliased to `se-prep-web.vercel.app` individually)
+
+1. **`9dec5b2`** -- Fixed a real correctness bug the user caught: the Kitwave
+   demo cache had only one fixture (built from the full prep pipeline, real AE
+   transcript baked in), served unconditionally including to the notes-free
+   research-first flow (`/deal/new`). Generated a genuine research-only variant
+   for real (empty notes, live web_search, same product context) via a
+   temporary debug route, verified zero notes-origin evidence before baking it
+   into `kitwave-group.ts` as `KITWAVE_RESEARCH_ONLY_*`. `runResearchOnlyPipeline`
+   now branches on whether `discoveryNotes` is empty. Also slowed demo pacing
+   500ms -> 1500ms/step (looked "too fast to be believable" for a live demo),
+   fixed the research tab bar's broken-looking wrap (10 tabs wrapping into an
+   ugly second row -> single-row horizontal scroll), folded Research into
+   `deal-view.tsx`'s main tab bar instead of a separate always-visible block,
+   and converted `BriefView` from one long scroll into tabs.
+2. **`6d4c498`** -- User reported the tabbed design "wasn't there" after
+   testing. Root cause: the previous commit only tabbed `ResearchBriefFullView`
+   (deal page) and `BriefView` (prep review) -- it missed the actual screen a
+   user sees immediately after clicking "Create deal and research", which
+   still stacked all nine sections vertically in both `/deal/new` and
+   `/deal/[id]/research/new`. Both now hand off to the same tabbed
+   `ResearchBriefFullView` once generation finishes, keeping the stacked
+   live-reveal only for the in-progress streaming state.
+   **Lesson for next time:** when told "the change isn't showing," verify the
+   actual deployed bundle contains the target string (grep `.next/static/chunks`
+   or similar) before assuming it's a caching/deploy issue -- in this case the
+   deploy was correct, the code just didn't cover the screen the user was
+   actually looking at. Confirming "deployed" isn't the same as confirming
+   "deployed to the right place."
+3. **`7db306d`** -- Removed 2 placeholder stakeholder entries ("Alan"/"Michael",
+   no surname, `is_placeholder: true`) from the Kitwave fixture's shared
+   `stakeholders.entries` -- correct per the research prompt's own placeholder
+   feature, but read as broken in the demo. Prose fields referencing them by
+   first name (`likely_champion_profile`, `who_is_missing`) still make sense
+   without the card.
+4. **`63ae75a`** then **`0744cd4`** -- Two separate live JSON-parse failures on
+   POV submission, both in `detectCompletedTasks`, different root causes:
+   - First: `max_tokens: 1024` too tight once a deal has several open tasks
+     each needing a full verbatim evidence quote -- response cut off mid-array,
+     no closing bracket. Raised to 2048.
+   - Second (after the above fix, same live retest): response completed
+     cleanly this time (proper closing brackets/fence) but still failed
+     `JSON.parse` -- almost certainly an unescaped `"` inside a verbatim
+     transcript quote. Added `createAndParseJson` (retry-once wrapper,
+     analysis.ts's own version of research.ts's `createAndParse` for the same
+     class of non-deterministic failure) and switched `detectCompletedTasks`
+     onto it, plus an explicit escaping instruction in the prompt as a first
+     line of defence.
+   **Not yet re-verified by the user as of session end** -- last message was
+   "Run shutdown" before confirming the retry actually fixed it. If it fails a
+   third time on the same call, the error message will name a different
+   function; same `createAndParseJson` pattern applies, and worth considering
+   applying it more broadly across `analysis.ts` at that point rather than
+   fixing one function at a time -- most functions there ask for verbatim
+   quotes and are theoretically exposed to the same escaping failure mode,
+   `detectCompletedTasks` was just the one that actually got exercised live.
+
+### Verification approach used throughout
+Every commit this sub-session: `tsc --noEmit` clean, `next build` clean,
+pushed, then polled `vercel ls`/`vercel inspect https://se-prep-web.vercel.app`
+until the new deployment showed `Ready` AND the production alias pointed at
+it, not just that a build succeeded. For the Kitwave fixture fix specifically,
+also did real functional verification (temporary debug routes, curl against
+the running dev server, deleted after use) rather than trusting code review
+alone -- confirmed zero notes-origin evidence in the research-only path and
+confirmed the notes-present path was unchanged, before shipping.
+
+### Outstanding
+- **Confirm the POV retry fix actually worked** -- this is the first thing to
+  check next session if not already confirmed by the user.
+- The VE DOCX work (item 4 of "Improvements to SE Agent") still hasn't been
+  started -- untouched since the entry below.
+- Consider whether `createAndParseJson` should be applied proactively to other
+  `analysis.ts` functions that also ask for verbatim quotes (scoreMeddpicc,
+  identifyRisks, etc.), rather than reactively, if the escaping failure recurs
+  on a different function.
+- Local dev server was killed at session end (`kill` on the port 3000 process)
+  -- will need `npm run dev` again next session before any local testing.
+
 ## Current state (2026-07-08, items 2+3 of "Improvements to SE Agent" built — flow reorder + optional Prep)
 
 Picked the session back up from the handoff note below. Built items 2 and 3
