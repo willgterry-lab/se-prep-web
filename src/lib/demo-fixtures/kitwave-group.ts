@@ -639,18 +639,6 @@ export const KITWAVE_SECTIONS: ResearchSections = {
           "url": "https://www.kitwave.co.uk/news/",
           "retrieved_at": "2021-04-21"
         }
-      },
-      {
-        "name": null,
-        "role": "Group IT Director (first name 'Alan' only; surname not publicly disclosed)",
-        "is_placeholder": true,
-        "evidence": null
-      },
-      {
-        "name": null,
-        "role": "Group Commercial Director (first name 'Michael' only; surname not publicly disclosed)",
-        "is_placeholder": true,
-        "evidence": null
       }
     ],
     "likely_economic_buyer": "Ben Maxted (CEO) is the primary economic buyer for major strategic initiatives and capital expenditure; Mark Earl (CFO) co-holds budget authority for any significant vendor or technology spend. For the pending OEP Capital Advisors acquisition, the buyer authority transitions to the incoming private-equity-backed leadership.",
