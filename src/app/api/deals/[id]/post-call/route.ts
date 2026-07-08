@@ -12,7 +12,7 @@ import {
   extractCallDate,
 } from "@/lib/analysis"
 import { upsertStakeholders } from "@/lib/stakeholders"
-import type { ProductContext, MeddpiccScore, Brief } from "@/types"
+import type { ProductContext, MeddpiccScore, Brief, ResearchSections } from "@/types"
 
 // Chains scoreMeddpicc then seven more calls (risks/questions/email/actions/
 // stakeholders/completed-tasks/call-date, mostly parallel). 60s was already
@@ -37,15 +37,26 @@ export async function POST(
 
   const { transcript, call_date } = await req.json()
 
-  const [{ data: deal }, { data: ctx }] = await Promise.all([
+  const [{ data: deal }, { data: ctx }, { data: researchBrief }] = await Promise.all([
     supabase.from("deals").select("*").eq("id", dealId).eq("user_id", user.id).single(),
     supabase.from("product_contexts").select("*").eq("user_id", user.id).single(),
+    supabase
+      .from("research_briefs")
+      .select("sections")
+      .eq("deal_id", dealId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   if (!deal) return new Response("Deal not found", { status: 404 })
   if (!ctx) return new Response("No product context found", { status: 400 })
 
   const product = ctx as ProductContext
+  // Post-call can now genuinely be the first call logged on a deal (Prep is
+  // optional -- see deal-view.tsx's first-call CTA), so ground scoring in the
+  // deal's research the same way /api/analyze already does, not just notes.
+  const researchDrivers = (researchBrief?.sections as ResearchSections | undefined)?.value_drivers ?? null
 
   // Fetch the most recent prep brief for delta computation, question continuity,
   // and cumulative scoring (its meddpicc/risks already reflect everything known so far).
@@ -76,7 +87,8 @@ export async function POST(
           transcript,
           product,
           deal.prospect_company,
-          prevBrief?.meddpicc
+          prevBrief?.meddpicc,
+          researchDrivers
         )
         emit({ type: "meddpicc", data: meddpicc })
 

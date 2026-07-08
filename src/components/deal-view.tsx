@@ -1639,7 +1639,7 @@ export function DealView({
               {STAGE_LABELS[deal.stage]}
             </Badge>
           </div>
-          <p className="text-gray-500">{deal.prospect_name}</p>
+          {deal.prospect_name && <p className="text-gray-500">{deal.prospect_name}</p>}
           <p className="text-xs text-gray-400 mt-1">
             Started {new Date(deal.created_at).toLocaleDateString("en-GB")}
           </p>
@@ -1678,6 +1678,32 @@ export function DealView({
 
       {/* Stakeholders */}
       <StakeholdersCard dealId={deal.id} initialStakeholders={stakeholders} />
+
+      {/* First-call choice: no brief of any stage exists yet. Research-first
+          deals (via /deal/new) land here with a company and research already
+          resolved but no Prep brief -- Prep is now optional, not a required
+          step before the first real call. */}
+      {briefs.length === 0 && researchBriefs.length > 0 && (
+        <Card className="border-dashed">
+          <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
+            <p className="text-sm text-gray-600">Ready for the first call on this deal?</p>
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/deal/${deal.id}/prep/new`}
+                className={cn(buttonVariants({ variant: "outline" }))}
+              >
+                Upload AE Discovery to prep for first SC Call
+              </Link>
+              <Link
+                href={`/deal/${deal.id}/post-call/new`}
+                className={cn(buttonVariants())}
+              >
+                Post Initial SC call analysis
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Post-call CTA */}
       {!hasPostCall && briefs.length > 0 && (

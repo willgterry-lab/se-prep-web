@@ -1,5 +1,125 @@
 # Session log
 
+## Current state (2026-07-08, items 2+3 of "Improvements to SE Agent" built — flow reorder + optional Prep)
+
+Picked the session back up from the handoff note below. Built items 2 and 3
+from the "Improvements to SE Agent" ask (item 1 was folded into item 2 --
+they're really one flow). Item 4 (VE DOCX) is still not started.
+
+**Decisions confirmed with the user before implementing** (both one-way-door-ish,
+asked rather than guessed): `deals.prospect_name` stays NOT NULL, defaulting to
+`""` on research-first creation rather than a nullable-column migration --
+`deal-view.tsx` header and the dashboard card now render it conditionally,
+skipping the blank case rather than showing an empty line. `/brief/new` is
+retired from the dashboard nav (CTA now points to `/deal/new`) but the page
+itself is untouched and still works -- just unlinked, not deleted.
+
+**What shipped, not yet pushed:**
+1. Refactored `/api/deals/[id]/research/route.ts` to call the already-written
+   (but previously dead-code) `runResearchOnlyPipeline` from `research.ts`,
+   instead of duplicating the four-call orchestration inline. Net -65 lines,
+   no behaviour change -- verified by diffing the emitted event sequence
+   against the pre-refactor version.
+2. New `POST /api/deals` (`src/app/api/deals/route.ts`): the research-first
+   entry point. Takes a resolved company, creates the deal row immediately
+   (`prospect_name: ""`) so research has a dealId to attach to, then streams
+   the same nine `research_*` NDJSON events via `runResearchOnlyPipeline`,
+   saves `research_briefs`, upserts stakeholders. Emits `deal_created` first
+   (client gets the dealId before research finishes) then `research_done`.
+   `maxDuration = 300`, matching the other research-pipeline routes.
+3. New page `/deal/new` (`src/app/(app)/deal/new/page.tsx`): company name/URL
+   input only, reusing the `CompanyChip`/`CompanyOverrideInput`/
+   `CompanyCandidatePicker`/`CompanyNotFound` components and the nine
+   `*SectionView` research renderers -- essentially `/deal/[id]/research/new`
+   minus an existing dealId. Redirects to `/deal/[id]` on `research_done`.
+   Dashboard's "New deal" CTA now points here instead of `/brief/new`.
+4. `deal-view.tsx`: new CTA block, shown when `briefs.length === 0 &&
+   researchBriefs.length > 0` (research exists, no brief of any stage yet) --
+   two choices side by side, "Upload AE Discovery to prep for first SC Call"
+   (`/deal/[id]/prep/new`) and "Post Initial SC call analysis" (existing
+   `/deal/[id]/post-call/new`, unchanged). The pre-existing `!hasPostCall &&
+   briefs.length > 0` post-call CTA is untouched and still covers the old
+   notes-first-with-a-prep-brief-already path.
+   `DealProgressBar`'s "Prep" node was checked live-in-code (not clicked) --
+   it's driven by `deal.stage`, which stays `'prep'` (the default) until
+   post-call is logged either way, so a Prep-skipping deal shows "Prep" as
+   current rather than looking broken. No schema/enum change needed, matching
+   the conclusion in the paused plan below.
+5. New `POST /api/deals/[id]/prep` (`src/app/api/deals/[id]/prep/route.ts`)
+   and page `/deal/[id]/prep/new`: the "Upload AE Discovery" choice. Notes-only
+   form (no company resolution -- reused the file-upload/drag-drop chrome from
+   `/brief/new` verbatim, dropped the company-resolution card). Added an
+   optional "Contact name" field on this form specifically, not part of the
+   original spec but needed in practice -- `draftPrepEmail` interpolates
+   `prospect_name` directly into the salutation with no blank-safe fallback,
+   and a research-first deal's `prospect_name` is `""` until something sets
+   it. If supplied and the deal's name is still blank, the route persists it
+   onto `deals.prospect_name` so it's no longer blank going forward; never
+   overwrites an existing one. Runs scoreMeddpicc/matchCaseStudies/
+   draftPrepEmail/generateQuestions grounded in the deal's existing
+   `research_briefs` row (same grounding `/api/analyze` does from scratch).
+   Reuses `BriefView` for the review step, same as `/brief/new`.
+6. `post-call/route.ts`: now fetches the deal's latest `research_briefs` row
+   and passes `sections.value_drivers` as `scoreMeddpicc`'s 5th arg -- it
+   didn't ground research before, only `/api/analyze` did. Matters more now
+   that post-call can genuinely be the first call logged on a deal (item 4
+   above). Deliberately did NOT add research grounding to `matchCaseStudies`
+   in post-call -- it hardcodes `matched_case_studies: []` there already,
+   which looks like a pre-existing, deliberate "case studies are matched once
+   at Prep, not re-matched every call" design choice, not something this
+   session's feedback doc asked to change.
+7. **Backfilled `AGENTS.md` for the entire Prospect Research feature**, which
+   turned out to have never been documented despite being built and shipped
+   earlier this same day (schema v9, `research.ts`, `research-brief-view.tsx`,
+   `company-resolution.tsx`, `/deal/[id]/research/new`) -- the doc still said
+   "Schema version: v8" with no mention of research_briefs anywhere. Added
+   glossary entries (Prospect research, Research-first deal creation, Optional
+   Prep), the v9 table, all new/changed routes and pages, and a proper
+   `research.ts` section under "Shared analysis lib". Worth remembering this
+   gap existed -- the "update AGENTS.md same session as the change" rule
+   didn't hold for the research feature itself, only started being followed
+   again this pickup.
+
+**Verified:** `tsc --noEmit` clean, `next build` clean (all new routes/pages
+appear in the route manifest: `/api/deals`, `/api/deals/[id]/prep`,
+`/deal/new`, `/deal/[id]/prep/new`). `eslint` on every touched file is clean
+except two PRE-EXISTING issues in `deal-view.tsx` (a `setState`-in-effect on
+the unrelated share-link `useEffect` at the old line ~1161, and an unused
+`dealId` warning) -- confirmed via `git diff` that neither line is part of
+this session's diff, not something introduced now. Curled `/api/resolve-company`
+directly against the running dev server (no auth required on that route) and
+got a correct real resolution back (also confirmed it still correctly hits
+the Kitwave demo-cache short-circuit).
+
+**Not verified live in the browser.** Claude's Chrome extension would not
+connect this pickup (`tabs_context_mcp` returned "Browser extension is not
+connected") -- same flakiness noted in the entry below. Everything past
+`/api/resolve-company` needs a real Supabase auth session, which isn't
+curl-able without the user's browser cookies, so the full research-first
+create-a-deal flow, the new-CTA branching, and the Prep-from-existing-research
+flow are all still only verified by code/type/build correctness, not by
+actually clicking through them. **This is the single most important thing to
+do before relying on any of this in the demo** -- click through `/deal/new`
+end to end, confirm the two-choice CTA appears correctly, and run both
+branches (`/deal/[id]/prep/new` and post-call-first) against a real test deal.
+
+### Outstanding
+- **Live click-test everything in this entry** -- see above, this is the gate
+  before demo-readiness, not build/type success.
+- Item 4 (VE DOCX) not started at all -- see the plan in the entry below,
+  nothing about it has changed.
+- Whether to eventually delete `/brief/new` outright (vs. leaving it unlinked
+  indefinitely) wasn't decided -- leaving it as legacy/unlinked was explicitly
+  the user's call this session, revisit only if it starts causing real
+  confusion or maintenance burden.
+- Consider whether `/deal/[id]/research/new` (manual re-run) and the new
+  `/deal/new` company-resolution UI could share more than just the imported
+  components -- there's now three near-identical "resolve a company, submit,
+  stream research" pages (`/deal/new`, `/deal/[id]/research/new`, and the
+  company-resolution portion of `/brief/new`). Not extracted this session
+  since none of the three are complex enough yet to be worth the abstraction,
+  but worth revisiting if a fourth entry point ever appears.
+
 ## Current state (2026-07-08, mid-session pause — demo fixes + "Improvements to SE Agent" in progress)
 
 **Paused mid-task, user had to leave for a train.** This entry is a handoff note for

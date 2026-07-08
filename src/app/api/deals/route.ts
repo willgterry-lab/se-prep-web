@@ -4,30 +4,23 @@ import { runResearchOnlyPipeline } from "@/lib/research"
 import { upsertStakeholders } from "@/lib/stakeholders"
 import type { ProductContext, ResolvedCompany, ExtractedStakeholder, CompanyResolution } from "@/types"
 
-// Manual fallback path: "Run prospect research" / "Re-run research" on the deal
-// page. Same research pipeline as the automatic Prep path (/api/analyze), just
-// without the surrounding MEDDPICC/case-study/email steps -- those belong to a
-// specific call's brief, not to a standalone research run. Reuses whatever
-// discovery notes already exist on the deal's earliest prep brief, if any.
-// 300s matches /api/analyze -- see the comment there on why 120s timed out
-// for real in production.
+// Research-first entry point ("New deal" on the dashboard): a resolved company
+// only, no discovery notes or call yet. Creates the deal row immediately (so
+// the research brief has a dealId to attach to), then streams the same nine
+// research_* NDJSON events the manual /api/deals/[id]/research route does.
+// prospect_name has no value at this point -- defaults to "" rather than a
+// nullable-column migration; deal-view.tsx/dashboard already render it
+// conditionally to handle the blank case.
+// 300s matches /api/analyze and the manual research route -- see the comment
+// there on why 120s timed out for real in production.
 export const maxDuration = 300
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id: dealId } = await params
+export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return new Response("Unauthorized", { status: 401 })
-
-  const { data: deal } = await supabase
-    .from("deals")
-    .select("id")
-    .eq("id", dealId)
-    .eq("user_id", user.id)
-    .single()
-  if (!deal) return new Response("Not found", { status: 404 })
 
   const { company } = (await req.json()) as { company?: ResolvedCompany & Pick<CompanyResolution, "confidence"> }
   if (!company?.name) {
@@ -47,24 +40,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const product = ctx as ProductContext
 
-  const { data: earliestBrief } = await supabase
-    .from("briefs")
-    .select("discovery_notes")
-    .eq("deal_id", dealId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  const discoveryNotes = earliestBrief?.discovery_notes ?? ""
+  const { data: deal, error: dealError } = await supabase
+    .from("deals")
+    .insert({
+      user_id: user.id,
+      prospect_name: "",
+      prospect_company: company.name,
+    })
+    .select()
+    .single()
+
+  if (dealError || !deal) {
+    return new Response(
+      JSON.stringify({ type: "error", message: dealError?.message ?? "Failed to create deal." }),
+      { status: 500 }
+    )
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (event: object) =>
         controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"))
 
+      emit({ type: "deal_created", data: { deal_id: deal.id } })
+
       try {
         const { sections, sourceLog, notesStakeholders } = await runResearchOnlyPipeline({
           company,
-          discoveryNotes,
+          discoveryNotes: "",
           product,
           emit,
         })
@@ -72,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const { data: researchBrief, error } = await supabase
           .from("research_briefs")
           .insert({
-            deal_id: dealId,
+            deal_id: deal.id,
             user_id: user.id,
             company_name: company.name,
             company_domain: company.domain ?? null,
@@ -94,9 +97,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const researchStakeholders: ExtractedStakeholder[] = sections.stakeholders.entries
           .filter((s): s is typeof s & { name: string } => Boolean(s.name))
           .map((s) => ({ name: s.name, role: s.role }))
-        await upsertStakeholders(supabase, dealId, null, [...notesStakeholders, ...researchStakeholders])
+        await upsertStakeholders(supabase, deal.id, null, [...notesStakeholders, ...researchStakeholders])
 
-        emit({ type: "research_done", data: { research_brief_id: researchBrief.id } })
+        emit({ type: "research_done", data: { deal_id: deal.id, research_brief_id: researchBrief.id } })
       } catch (e) {
         emit({ type: "error", message: e instanceof Error ? e.message : "Something went wrong." })
       } finally {

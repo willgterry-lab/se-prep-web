@@ -45,7 +45,7 @@ export default async function DashboardPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Deals</h2>
           {product && (
-            <Link href="/brief/new" className={cn(buttonVariants())}>
+            <Link href="/deal/new" className={cn(buttonVariants())}>
               New deal
             </Link>
           )}
@@ -84,7 +84,9 @@ export default async function DashboardPage() {
                       <div>
                         <p className="font-medium">{deal.prospect_company}</p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <p className="text-sm text-gray-500">{deal.prospect_name}</p>
+                          {deal.prospect_name && (
+                            <p className="text-sm text-gray-500">{deal.prospect_name}</p>
+                          )}
                           <Badge variant="outline" className="text-[10px] py-0">
                             {STAGE_LABELS[deal.stage]}
                           </Badge>
