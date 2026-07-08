@@ -19,7 +19,8 @@ import {
   RiskCard,
   riskScoreColor,
 } from "@/components/score-display"
-import type { Deal, Brief, DealTask, MeddpiccScore, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus, VeBaselineInput, VeSliderInputs, VeProposal, VeConfidence, DealStakeholder, SuggestedQuestions } from "@/types"
+import { ResearchBriefFullView } from "@/components/research-brief-view"
+import type { Deal, Brief, DealTask, MeddpiccScore, TaskStatus, SuccessCriterion, PovAssessment, PovCriterionStatus, VeBaselineInput, VeSliderInputs, VeProposal, VeConfidence, DealStakeholder, SuggestedQuestions, ResearchBrief } from "@/types"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -262,6 +263,72 @@ function ManagedRisksCard({ briefs }: { briefs: Brief[] }) {
         ))}
       </CardContent>
     </Card>
+  )
+}
+
+// ─── Prospect research card ───────────────────────────────────────────────────
+
+// Same shape as computeManagedRisks: a lightweight, honest summary of what
+// changed between runs (counts + headline), not a full structural diff --
+// consistent with how "Resolved risks" already summarises change here.
+function computeResearchDiff(previous: ResearchBrief | null, latest: ResearchBrief): string[] {
+  if (!previous) return []
+  const changes: string[] = []
+
+  if (previous.sections.value_drivers.most_visible_pain_headline !== latest.sections.value_drivers.most_visible_pain_headline) {
+    changes.push("Most visible pain headline changed")
+  }
+  const compareCounts = (label: string, prev: number, curr: number) => {
+    if (prev !== curr) changes.push(`${label}: ${prev} → ${curr}`)
+  }
+  compareCounts("Value driver hypotheses", previous.sections.value_drivers.hypotheses.length, latest.sections.value_drivers.hypotheses.length)
+  compareCounts("Risks identified", previous.sections.risks.risks.length, latest.sections.risks.risks.length)
+  compareCounts("Stakeholders found", previous.sections.stakeholders.entries.length, latest.sections.stakeholders.entries.length)
+  compareCounts("Buying signals", previous.sections.buying_signals.signals.length, latest.sections.buying_signals.signals.length)
+  compareCounts("Sources", previous.source_log.length, latest.source_log.length)
+
+  return changes
+}
+
+function ProspectResearchSection({ dealId, researchBriefs }: { dealId: string; researchBriefs: ResearchBrief[] }) {
+  const latest = researchBriefs.length ? researchBriefs[researchBriefs.length - 1] : null
+  const previous = researchBriefs.length > 1 ? researchBriefs[researchBriefs.length - 2] : null
+
+  if (!latest) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
+          <p className="text-sm text-gray-600">No prospect research yet for this deal.</p>
+          <Link href={`/deal/${dealId}/research/new`} className={cn(buttonVariants())}>
+            Run prospect research
+          </Link>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const diff = computeResearchDiff(previous, latest)
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900">Prospect research</h2>
+        <Link href={`/deal/${dealId}/research/new`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+          Re-run research
+        </Link>
+      </div>
+      {diff.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardContent className="py-3">
+            <p className="text-xs font-medium text-amber-800 mb-1">Changed since last run</p>
+            <ul className="text-xs text-amber-700 list-disc list-inside space-y-0.5">
+              {diff.map((d, i) => <li key={i}>{d}</li>)}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+      <ResearchBriefFullView brief={latest} />
+    </div>
   )
 }
 
@@ -1490,11 +1557,13 @@ export function DealView({
   briefs,
   tasks,
   stakeholders,
+  researchBriefs,
 }: {
   deal: Deal
   briefs: Brief[]
   tasks: DealTask[]
   stakeholders: DealStakeholder[]
+  researchBriefs: ResearchBrief[]
 }) {
   const latestBrief = briefs.length ? briefs[briefs.length - 1] : null
   const postCallBrief = briefs.find((b) => b.stage === "post_call") ?? null
@@ -1603,6 +1672,9 @@ export function DealView({
 
       {/* Lifecycle progress */}
       <DealProgressBar stage={deal.stage} />
+
+      {/* Prospect research */}
+      <ProspectResearchSection dealId={deal.id} researchBriefs={researchBriefs} />
 
       {/* Stakeholders */}
       <StakeholdersCard dealId={deal.id} initialStakeholders={stakeholders} />

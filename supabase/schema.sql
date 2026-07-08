@@ -240,3 +240,38 @@ alter table public.deals
 -- or best-effort extracted from the transcript; null falls back to created_at.
 alter table public.briefs
   add column if not exists call_date date;
+
+
+-- ─── Migration v9: prospect research ───────────────────────────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+
+-- One row per research run on a deal's prospect company (initial run + each
+-- re-run). Not a briefs.stage value -- a research run isn't a "call", and its
+-- shape (nine fixed sections) is unrelated to the meddpicc/case-study/email
+-- shape every other brief stage shares. Latest row per deal is the current
+-- brief; re-run diffing is computed client-side against the previous row,
+-- the same pattern deal-view.tsx already uses for "Resolved risks".
+create table public.research_briefs (
+  id                     uuid        primary key default gen_random_uuid(),
+  deal_id                uuid        references public.deals(id) on delete cascade not null,
+  user_id                uuid        references auth.users(id) on delete cascade not null,
+  company_name           text        not null,
+  company_domain         text,
+  company_hq             text,
+  company_description    text,
+  resolution_confidence  text,       -- 'high' | 'low'
+  sections               jsonb       not null,          -- the nine research sections, keyed by section id
+  source_log             jsonb       not null default '[]',
+  created_at             timestamptz default now()
+);
+
+-- Link a prep brief to the research run it was grounded in, if any.
+alter table public.briefs
+  add column if not exists research_brief_id uuid references public.research_briefs(id) on delete set null;
+
+alter table public.research_briefs enable row level security;
+
+create policy "Users manage own research briefs"
+  on public.research_briefs for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);

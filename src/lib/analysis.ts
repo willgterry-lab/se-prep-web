@@ -14,6 +14,8 @@ import type {
   VeSliderInputs,
   VeProposal,
   ExtractedStakeholder,
+  ValueDriverSection,
+  DiscoveryQuestionsSection,
 } from "@/types"
 
 const MEDDPICC_ELEMENTS = [
@@ -118,7 +120,8 @@ export async function scoreMeddpicc(
   notes: string,
   product: ProductContext,
   prospect_company: string,
-  priorMeddpicc?: MeddpiccScore | null
+  priorMeddpicc?: MeddpiccScore | null,
+  researchDrivers?: ValueDriverSection | null
 ): Promise<MeddpiccScore> {
   const priorSection = priorMeddpicc
     ? `
@@ -127,6 +130,19 @@ Prior evidence from earlier calls on this deal (still valid unless this transcri
 ${formatPriorMeddpicc(priorMeddpicc)}
 
 Rule: if this transcript does not re-mention an element, carry forward its prior score and evidence rather than treating it as unknown -- absence of re-mention is not regression. Only score an element lower than its prior score if something in THIS transcript actively contradicts or undermines the prior evidence (e.g. a champion has left, a competitor was just chosen, budget was pulled). If this transcript adds stronger evidence for an element, you may raise its score.`
+    : ""
+
+  // Prospect research hypotheses pre-seed Identified Pain and Metrics -- but
+  // only as candidates to corroborate, never as a substitute for the notes.
+  // Scoring purely off a web-sourced hypothesis with no notes support would
+  // fabricate confidence the transcript doesn't back.
+  const researchSection = researchDrivers?.hypotheses.length
+    ? `
+
+Prospect research hypotheses (from web research, not yet confirmed on a call):
+${researchDrivers.hypotheses.map((h) => `- ${h.driver_statement} (confidence: ${h.confidence})`).join("\n")}
+
+Rule: if the discovery notes independently corroborate one of these hypotheses, factor it into Identified Pain and/or Metrics -- use the verbatim notes quote as evidence, not the research text. If the notes are silent on it, do not score it in; it stays a research hypothesis, not a scored fact.`
     : ""
 
   const message = await anthropic.messages.create({
@@ -141,7 +157,7 @@ Product being sold: ${product.company} -- ${product.one_line_value}
 Prospect company: ${prospect_company}
 
 Discovery notes:
-${notes}${priorSection}
+${notes}${priorSection}${researchSection}
 
 Score each MEDDPICC element from 0-3:
 0 = Not mentioned / no evidence
@@ -178,9 +194,22 @@ Rules:
 
 export async function matchCaseStudies(
   notes: string,
-  product: ProductContext
+  product: ProductContext,
+  researchDrivers?: ValueDriverSection | null
 ): Promise<MatchedCaseStudy[]> {
   if (!product.case_studies?.length) return []
+
+  // Research's value driver hypotheses are evidenced pain, not just an industry
+  // label -- matching against them (in addition to the notes) surfaces the case
+  // study whose outcome addresses the same pain, not just the same vertical.
+  const researchSection = researchDrivers?.hypotheses.length
+    ? `
+
+Prospect research value driver hypotheses (evidenced pain found via web research, not yet confirmed on a call):
+${researchDrivers.hypotheses.map((h) => `- ${h.driver_statement}`).join("\n")}
+
+Match on this evidenced pain where it's stronger or more specific than what the vertical alone would suggest -- prefer a case study whose outcome addresses the same underlying pain over one that merely shares an industry.`
+    : ""
 
   const message = await anthropic.messages.create({
     model: MODEL,
@@ -191,7 +220,7 @@ export async function matchCaseStudies(
         content: `You are an expert at matching customer case studies to prospect situations.
 
 Discovery notes from a prospect call:
-${notes}
+${notes}${researchSection}
 
 Available case studies:
 ${JSON.stringify(product.case_studies, null, 2)}
@@ -226,7 +255,8 @@ Order by relevance_score descending. Only include case studies from the provided
 export async function generateQuestions(
   discovery_notes: string,
   meddpicc: MeddpiccScore,
-  product: ProductContext
+  product: ProductContext,
+  researchQuestions?: DiscoveryQuestionsSection | null
 ): Promise<SuggestedQuestions> {
   const gaps = MEDDPICC_ELEMENTS
     .map((key) => {
@@ -235,6 +265,18 @@ export async function generateQuestions(
     })
     .filter(Boolean)
     .join("\n")
+
+  // Prospect research already generated a discovery question list from its own
+  // gaps and unknowns (section 8) -- when available, build from that instead of
+  // cold-starting discovery/technical questions from nothing.
+  const researchSection = researchQuestions?.questions.length
+    ? `
+
+Prospect research already surfaced these candidate questions from its own gaps and unknowns:
+${researchQuestions.questions.map((q) => `- [${q.meddpicc_element}] ${q.question}`).join("\n")}
+
+Draw on these first for the discovery/technical categories below -- rephrase or select from them rather than starting from a blank slate, adding new ones only where they leave a category thin.`
+    : ""
 
   const message = await anthropic.messages.create({
     model: MODEL,
@@ -249,7 +291,7 @@ Discovery notes from the AE call:
 ${discovery_notes}
 
 MEDDPICC gaps identified:
-${gaps || "None significant"}
+${gaps || "None significant"}${researchSection}
 
 Generate 9 questions in three categories. Return ONLY valid JSON with no code fences or preamble:
 {
@@ -859,6 +901,17 @@ ${callTypeInstructions}
   return message.content[0].type === "text" ? stripEmDashes(message.content[0].text) : ""
 }
 
+// Picks the strongest web-cited fact from the top-ranked value driver hypothesis
+// to ground the prep email in something verifiable beyond the notes -- prefers
+// web evidence (has a url the prospect could recognise) over notes evidence
+// (which the email already draws on via identified pain).
+function pickCitedResearchFact(researchDrivers?: ValueDriverSection | null): { text: string; url?: string } | null {
+  const top = researchDrivers?.hypotheses[0]
+  if (!top) return null
+  const webEvidence = top.evidence.find((e) => e.origin === "web")
+  return webEvidence ? { text: webEvidence.text, url: webEvidence.url } : null
+}
+
 export async function draftPrepEmail({
   prospect_name,
   prospect_company,
@@ -867,6 +920,7 @@ export async function draftPrepEmail({
   meddpicc,
   matched_case_studies,
   sc_name,
+  research_drivers,
 }: {
   prospect_name: string
   prospect_company: string
@@ -875,7 +929,13 @@ export async function draftPrepEmail({
   meddpicc: MeddpiccScore
   matched_case_studies: MatchedCaseStudy[]
   sc_name: string
+  research_drivers?: ValueDriverSection | null
 }): Promise<string> {
+  const citedFact = pickCitedResearchFact(research_drivers)
+  const researchLine = citedFact
+    ? `\nResearch finding to ground the email in (cite this fact naturally, don't just paste it): ${citedFact.text}`
+    : ""
+
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 512,
@@ -891,14 +951,14 @@ Product: ${product.company} -- ${product.one_line_value}
 Prospect name: ${prospect_name}
 Prospect company: ${prospect_company}
 Deal summary: ${meddpicc.summary}
-Identified pain: ${meddpicc.identify_pain.evidence}
+Identified pain: ${meddpicc.identify_pain.evidence}${researchLine}
 
 AE discovery notes (background context only -- the SC was not on this call):
 ${discovery_notes}
 
 Rules:
 - Open by introducing the SC by name and role, and reference being brought in by the AE ahead of their upcoming call.
-- Show the SC has done their homework: reference the prospect's specific situation and pain points using their own words, to demonstrate they are already across the detail before they've spoken.
+- Show the SC has done their homework: reference the prospect's specific situation and pain points using their own words, to demonstrate they are already across the detail before they've spoken.${citedFact ? " Where it fits naturally, work in the research finding above as a further sign of preparation -- state it as something you noticed, not as a quote or citation." : ""}
 - Frame the email as preparation for the call, not a summary of one.
 - Do NOT use any of these phrases or anything similar: "thanks for the time today", "great speaking with you", "following up on our conversation", "as we discussed", "from our call", "taking away from today".
 - Do NOT include any case study references or examples -- those are added separately.
@@ -969,8 +1029,20 @@ Rules:
 export async function generateVeWorkshopQuestions(
   aggregated_metrics_evidence: string,
   aggregated_pain_evidence: string,
-  product: ProductContext
+  product: ProductContext,
+  candidate_drivers?: string
 ): Promise<string[]> {
+  // Prospect research's value driver hypotheses and cost-of-doing-nothing seeds
+  // carry across as candidates awaiting verbatim baselines -- not evidenced
+  // numbers yet, so they shape which questions to prioritise rather than being
+  // treated as already-captured evidence above.
+  const candidateSection = candidate_drivers
+    ? `
+
+Candidate value drivers from prospect research (hypotheses awaiting verbatim baselines -- prioritise questions that would confirm or quantify these):
+${candidate_drivers}`
+    : ""
+
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 600,
@@ -987,7 +1059,7 @@ Metrics evidence:
 ${aggregated_metrics_evidence || "None captured yet."}
 
 Pain evidence:
-${aggregated_pain_evidence || "None captured yet."}
+${aggregated_pain_evidence || "None captured yet."}${candidateSection}
 
 Generate 8 to 12 focused questions to ask in the VE workshop that will surface the specific quantified inputs needed to build a credible business case. Target genuine gaps -- do not ask for information already evidenced above.
 

@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import type { MeddpiccScore, RiskItem } from "@/types"
+import type { MeddpiccScore, RiskItem, EvidenceItem, ResearchConfidence, ResearchSourceTier } from "@/types"
 
 // Shared between brief-view.tsx (a single brief) and deal-view.tsx (a whole deal's
 // history) -- kept in one place after a numeric-score display drifted between the
@@ -60,6 +60,58 @@ export function SeverityBadge({ severity }: { severity: RiskItem["severity"] }) 
       className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${classes[severity]}`}
     >
       {severity}
+    </span>
+  )
+}
+
+// ─── Prospect research display primitives ─────────────────────────────────
+// Shared between the Prep streaming view and the deal page's research section
+// (research-brief-view.tsx) -- same "don't duplicate per page" rule as RiskCard.
+
+const SOURCE_TIER_LABELS: Record<ResearchSourceTier, string> = {
+  company_site: "company site",
+  filings: "filings",
+  news: "news",
+  job_postings: "job postings",
+  linkedin: "LinkedIn",
+  reviews: "reviews",
+}
+
+export function EvidenceBadge({ item }: { item: Pick<EvidenceItem, "origin" | "source_tier"> }) {
+  if (item.origin === "notes") {
+    return (
+      <span className="inline-flex items-center rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-700">
+        From notes
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+      Web{item.source_tier ? ` · ${SOURCE_TIER_LABELS[item.source_tier]}` : ""}
+    </span>
+  )
+}
+
+export function ConfidenceBadge({ confidence }: { confidence: ResearchConfidence }) {
+  const classes: Record<ResearchConfidence, string> = {
+    high: "bg-[#1ED760]/15 text-[#0A6630] border-[#1ED760]/30",
+    medium: "bg-amber-100 text-amber-700 border-amber-200",
+    low: "bg-gray-100 text-gray-600 border-gray-200",
+  }
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${classes[confidence]}`}
+    >
+      {confidence} confidence
+    </span>
+  )
+}
+
+export function StalenessBadge({ stale }: { stale: boolean }) {
+  if (!stale) return null
+  return (
+    <span className="inline-flex items-center rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-600">
+      Stale
     </span>
   )
 }

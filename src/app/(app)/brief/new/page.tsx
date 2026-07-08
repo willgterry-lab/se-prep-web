@@ -9,14 +9,24 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { BriefView } from "@/components/brief-view"
-import type { MeddpiccScore, MatchedCaseStudy, Brief } from "@/types"
+import { ValueDriverSectionView } from "@/components/research-brief-view"
+import { CompanyChip, CompanyOverrideInput, CompanyCandidatePicker, CompanyNotFound } from "@/components/company-resolution"
+import type { MeddpiccScore, MatchedCaseStudy, Brief, CompanyResolution, ResolvedCompany, ValueDriverSection } from "@/types"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Phase = "form" | "streaming" | "review"
 
+// Nine research sections stream in first, ahead of the existing MEDDPICC/case
+// studies/email steps -- see the sequencing note in /api/analyze/route.ts. Only
+// value_drivers (the core section) gets full rendering here; the rest tick off
+// in the step list, same as MEDDPICC/case studies did before this feature. Full
+// nine-section rendering is reused from research-brief-view.tsx on the deal page.
 type StreamState = {
   phase: Phase
+  researchSectionsReceived: number
+  valueDrivers: ValueDriverSection | null
+  researchBriefId: string | null
   meddpicc: MeddpiccScore | null
   caseStudies: MatchedCaseStudy[] | null
   email: string | null
@@ -24,6 +34,8 @@ type StreamState = {
   briefId: string | null
   dealId: string | null
 }
+
+const RESEARCH_SECTION_COUNT = 9 // snapshot, strategic_context, operating_model, stakeholders, buying_signals, value_drivers, risks, discovery_questions, source_log
 
 type UploadedFile = {
   id: string
@@ -206,7 +218,6 @@ export default function NewBriefPage() {
 
   const [form, setForm] = useState({
     prospect_name: "",
-    prospect_company: "",
     discovery_notes: "",
   })
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
@@ -215,6 +226,9 @@ export default function NewBriefPage() {
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
   const [stream, setStream] = useState<StreamState>({
     phase: "form",
+    researchSectionsReceived: 0,
+    valueDrivers: null,
+    researchBriefId: null,
     meddpicc: null,
     caseStudies: null,
     email: null,
@@ -222,6 +236,14 @@ export default function NewBriefPage() {
     briefId: null,
     dealId: null,
   })
+
+  // Company is resolved from the pasted notes/transcript itself, not typed --
+  // see /api/resolve-company. `companyLocked` stops auto-resolution from a later
+  // paste from clobbering a company the user already confirmed or corrected.
+  const [companyRes, setCompanyRes] = useState<CompanyResolution | null>(null)
+  const [resolvingCompany, setResolvingCompany] = useState(false)
+  const [companyLocked, setCompanyLocked] = useState(false)
+  const [correctingCompany, setCorrectingCompany] = useState(false)
 
   function setNotes(updater: string | ((prev: string) => string)) {
     setForm((prev) => ({
@@ -234,7 +256,7 @@ export default function NewBriefPage() {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  // Fire-and-forget: extract prospect name/company from text and populate empty fields
+  // Fire-and-forget: extract prospect contact name from text and populate if empty
   async function tryExtractProspect(text: string) {
     try {
       const res = await fetch("/api/extract-prospect", {
@@ -247,11 +269,61 @@ export default function NewBriefPage() {
       setForm((prev) => ({
         ...prev,
         prospect_name: prev.prospect_name || data.prospect_name || prev.prospect_name,
-        prospect_company: prev.prospect_company || data.prospect_company || prev.prospect_company,
       }))
     } catch {
       // non-critical — silent failure is fine
     }
+  }
+
+  // Resolve the prospect company from pasted text. Never overwrites a company
+  // the user has already confirmed/corrected (companyLocked), and never
+  // silently proceeds on a low-confidence or ambiguous match.
+  async function resolveFromText(text: string) {
+    if (companyLocked || !text.trim()) return
+    setResolvingCompany(true)
+    try {
+      const res = await fetch("/api/resolve-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      })
+      const data: CompanyResolution = await res.json()
+      setCompanyRes(data)
+      // A confident auto-resolution doesn't need to be "confirmed" again, but
+      // it isn't locked either -- a later, more detailed paste can still improve it.
+    } catch {
+      // non-critical for the fire-and-forget paste path -- resolution can be retried
+    } finally {
+      setResolvingCompany(false)
+    }
+  }
+
+  // Manual resolution: candidate pick, "wrong company?" override, or not-found entry.
+  async function resolveManual(nameOrUrl: string) {
+    setResolvingCompany(true)
+    try {
+      const res = await fetch("/api/resolve-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name_or_url: nameOrUrl }),
+      })
+      const data: CompanyResolution = await res.json()
+      setCompanyRes(data)
+      if (data.status === "resolved") {
+        setCompanyLocked(true)
+        setCorrectingCompany(false)
+      }
+    } catch {
+      setCompanyRes({ status: "not_found" })
+    } finally {
+      setResolvingCompany(false)
+    }
+  }
+
+  function pickCandidate(candidate: ResolvedCompany) {
+    setCompanyRes({ status: "resolved", confidence: "high", company: candidate })
+    setCompanyLocked(true)
+    setCorrectingCompany(false)
   }
 
   async function handleGenerateTranscript() {
@@ -265,7 +337,7 @@ export default function NewBriefPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prospect_name: form.prospect_name || undefined,
-          prospect_company: form.prospect_company || undefined,
+          prospect_company: companyRes?.company?.name || undefined,
         }),
       })
 
@@ -294,7 +366,6 @@ export default function NewBriefPage() {
             setForm((prev) => ({
               ...prev,
               prospect_name: prev.prospect_name || event.prospect_name || prev.prospect_name,
-              prospect_company: prev.prospect_company || event.prospect_company || prev.prospect_company,
             }))
           } else if (event.type === "text") {
             accumulated += event.chunk
@@ -304,6 +375,7 @@ export default function NewBriefPage() {
           }
         }
       }
+      if (accumulated) resolveFromText(accumulated)
     } catch (err) {
       setTranscriptError(err instanceof Error ? err.message : "Something went wrong.")
     } finally {
@@ -343,6 +415,7 @@ export default function NewBriefPage() {
               prev.map((f) => (f.id === id ? { ...f, status: "done" } : f))
             )
             tryExtractProspect(data.text)
+            resolveFromText(data.text)
           } else {
             setUploadedFiles((prev) =>
               prev.map((f) => (f.id === id ? { ...f, status: "error", error: data.error } : f))
@@ -381,14 +454,18 @@ export default function NewBriefPage() {
     setUploadedFiles((prev) => prev.filter((f) => f.id !== id))
   }
 
-  function stepStatus(key: "meddpicc" | "case_studies" | "email", state: StreamState): "pending" | "active" | "done" {
+  function stepStatus(key: "research" | "meddpicc" | "case_studies" | "email", state: StreamState): "pending" | "active" | "done" {
+    if (key === "research") {
+      if (state.researchBriefId) return "done"
+      if (state.phase === "streaming") return "active"
+    }
     if (key === "meddpicc") {
       if (state.meddpicc) return "done"
-      if (state.phase === "streaming") return "active"
+      if (state.researchBriefId) return "active"
     }
     if (key === "case_studies") {
       if (state.caseStudies) return "done"
-      if (state.phase === "streaming") return "active"
+      if (state.researchBriefId) return "active"
     }
     if (key === "email") {
       if (state.email) return "done"
@@ -399,13 +476,29 @@ export default function NewBriefPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setStream({ phase: "streaming", meddpicc: null, caseStudies: null, email: null, error: null, briefId: null, dealId: null })
+    if (!companyRes || companyRes.status !== "resolved" || !companyRes.company) return
+    setStream({
+      phase: "streaming",
+      researchSectionsReceived: 0,
+      valueDrivers: null,
+      researchBriefId: null,
+      meddpicc: null,
+      caseStudies: null,
+      email: null,
+      error: null,
+      briefId: null,
+      dealId: null,
+    })
 
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          prospect_company: companyRes.company.name,
+          company: { ...companyRes.company, confidence: companyRes.confidence },
+        }),
       })
 
       if (!res.ok || !res.body) {
@@ -429,7 +522,13 @@ export default function NewBriefPage() {
           if (!line.trim()) continue
           const event = JSON.parse(line)
 
-          if (event.type === "meddpicc") {
+          if (event.type === "research_value_drivers") {
+            setStream((s) => ({ ...s, researchSectionsReceived: s.researchSectionsReceived + 1, valueDrivers: event.data }))
+          } else if (event.type === "research_done") {
+            setStream((s) => ({ ...s, researchBriefId: event.data.research_brief_id }))
+          } else if (typeof event.type === "string" && event.type.startsWith("research_")) {
+            setStream((s) => ({ ...s, researchSectionsReceived: s.researchSectionsReceived + 1 }))
+          } else if (event.type === "meddpicc") {
             setStream((s) => ({ ...s, meddpicc: event.data }))
           } else if (event.type === "case_studies") {
             setStream((s) => ({ ...s, caseStudies: event.data }))
@@ -488,14 +587,37 @@ export default function NewBriefPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="company">Company</Label>
-                <Input
-                  id="company"
-                  placeholder="Acme Corp"
-                  value={form.prospect_company}
-                  onChange={(e) => set("prospect_company", e.target.value)}
-                  required
-                />
+                <Label>Company</Label>
+                {resolvingCompany && !companyRes && (
+                  <p className="text-xs text-gray-400">Resolving company from notes…</p>
+                )}
+                {!resolvingCompany && !companyRes && (
+                  <p className="text-xs text-gray-400">
+                    Paste or upload discovery notes below — the company is identified automatically.
+                  </p>
+                )}
+                {companyRes?.status === "resolved" && companyRes.company && !correctingCompany && (
+                  <CompanyChip company={companyRes.company} onWrongCompany={() => setCorrectingCompany(true)} />
+                )}
+                {companyRes?.status === "resolved" && correctingCompany && (
+                  <CompanyOverrideInput
+                    placeholder="Correct company name or URL"
+                    onSubmit={resolveManual}
+                    onCancel={() => setCorrectingCompany(false)}
+                    loading={resolvingCompany}
+                  />
+                )}
+                {companyRes?.status === "ambiguous" && (
+                  <CompanyCandidatePicker
+                    candidates={companyRes.candidates ?? []}
+                    onPick={pickCandidate}
+                    onManual={resolveManual}
+                    loading={resolvingCompany}
+                  />
+                )}
+                {companyRes?.status === "not_found" && (
+                  <CompanyNotFound onManual={resolveManual} loading={resolvingCompany} />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -583,7 +705,10 @@ export default function NewBriefPage() {
                 onChange={(e) => setNotes(e.target.value)}
                 onPaste={(e) => {
                   const pasted = e.clipboardData.getData("text")
-                  if (pasted) tryExtractProspect(pasted)
+                  if (pasted) {
+                    tryExtractProspect(pasted)
+                    resolveFromText(pasted)
+                  }
                 }}
                 rows={18}
                 required
@@ -593,8 +718,19 @@ export default function NewBriefPage() {
 
           {stream.error && <p className="text-sm text-red-600">{stream.error}</p>}
 
-          <Button type="submit" className="w-full" size="lg" disabled={hasExtracting}>
-            {hasExtracting ? "Extracting files…" : "Generate prep brief"}
+          <Button
+            type="submit"
+            className="w-full"
+            size="lg"
+            disabled={hasExtracting || resolvingCompany || !companyRes || companyRes.status !== "resolved"}
+          >
+            {hasExtracting
+              ? "Extracting files…"
+              : resolvingCompany
+                ? "Resolving company…"
+                : !companyRes || companyRes.status !== "resolved"
+                  ? "Confirm company to continue"
+                  : "Generate prep brief"}
           </Button>
         </form>
       </div>
@@ -610,7 +746,7 @@ export default function NewBriefPage() {
       deal_id: stream.dealId,
       stage: "prep",
       prospect_name: form.prospect_name,
-      prospect_company: form.prospect_company,
+      prospect_company: companyRes?.company?.name ?? "",
       discovery_notes: form.discovery_notes,
       meddpicc: stream.meddpicc,
       matched_case_studies: stream.caseStudies ?? [],
@@ -621,6 +757,7 @@ export default function NewBriefPage() {
       recording_url: null,
       ve_baseline_inputs: [],
       call_date: null,
+      research_brief_id: stream.researchBriefId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -633,19 +770,24 @@ export default function NewBriefPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">
-          {form.prospect_name} · {form.prospect_company}
+          {form.prospect_name} · {companyRes?.company?.name ?? ""}
         </h1>
         <p className="text-gray-500 mt-1 text-sm">Generating your prep brief…</p>
       </div>
 
       <Card>
         <CardContent className="pt-6 space-y-3">
+          <StepRow
+            label={`Researching ${companyRes?.company?.name ?? "prospect company"} (${stream.researchSectionsReceived}/${RESEARCH_SECTION_COUNT})`}
+            status={stepStatus("research", stream)}
+          />
           <StepRow label="Scoring MEDDPICC" status={stepStatus("meddpicc", stream)} />
           <StepRow label="Matching case studies" status={stepStatus("case_studies", stream)} />
           <StepRow label="Drafting follow-up email" status={stepStatus("email", stream)} />
         </CardContent>
       </Card>
 
+      {stream.valueDrivers && <ValueDriverSectionView section={stream.valueDrivers} />}
       {stream.meddpicc && <MeddpiccPreview score={stream.meddpicc} />}
       {stream.caseStudies && <CaseStudiesPreview studies={stream.caseStudies} />}
       {stream.email && <EmailPreview email={stream.email} />}

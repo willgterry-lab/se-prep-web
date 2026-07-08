@@ -1,6 +1,102 @@
 # Session log
 
-## Current state (2026-07-07, salesroom task segmentation + delete-deal)
+## Current state (2026-07-08, Prospect Research feature — Migration v9)
+
+Built the Prospect Research feature end to end, per the spec in the pasted
+build prompt: a 9-section, evidence-cited research brief on the prospect
+company, run automatically when notes are pasted into Prep (or manually from
+the deal page), grounding MEDDPICC/case studies/discovery questions/email in
+research instead of notes alone.
+
+**Key architecture decision:** no existing web search capability in the
+codebase (`/api/scrape` only crawls known/guessable URLs on one given domain --
+fine for the vendor's own product site, useless for news/jobs/LinkedIn/reviews
+on a prospect). Confirmed with the user to use Claude's native `web_search`
+tool (`web_search_20250305`) rather than adding a third-party search API --
+avoids a new vendor account/key and gives citations natively.
+
+**Schema (Migration v9, not yet run in Supabase):**
+- New table `research_briefs` -- one row per research run (initial + each
+  re-run, kept for history/diffing, same pattern as `briefs` + delta): company
+  fields (name/domain/hq/description/resolution_confidence), `sections` jsonb
+  (8 of the 9 spec sections), `source_log` jsonb (the 9th, computed not
+  generated).
+- `briefs.research_brief_id` FK -- links a prep brief to the research run it
+  was grounded in.
+
+**New files:**
+- `src/lib/research.ts` -- `resolveCompany` (company resolution, confidence-gated,
+  never guesses on ambiguity), `researchSnapshotAndContext`/`researchOperatingModel`/
+  `researchStakeholdersAndSignals`/`researchValueDriversAndRisks` (4 parallel
+  web_search-backed calls covering all 9 sections), `researchDiscoveryQuestions`
+  (pure reasoning over the gaps, no search), `buildSourceLog` (pure, dedupes
+  evidence URLs). `CHOCO_VALUE_DRIVER_TAXONOMY`/`CHOCO_OPERATING_MODEL_LENS` are
+  the vendor-configurable defaults per spec.
+- `src/components/research-brief-view.tsx` -- full 9-section renderer
+  (`ResearchBriefFullView` + one component per section), reused by both the
+  Prep streaming view and the deal page.
+- `src/components/company-resolution.tsx` -- shared chip/candidate-picker/
+  override-input UI, reused by the Prep form (automatic path) and
+  `/deal/[id]/research/new` (manual fallback).
+- `src/app/api/resolve-company/route.ts`, `src/app/api/deals/[id]/research/route.ts`
+  (manual path, NDJSON streaming, same event names as the Prep route),
+  `src/app/(app)/deal/[id]/research/new/page.tsx` (manual entry page).
+- `EvidenceBadge`/`ConfidenceBadge`/`StalenessBadge` added to `score-display.tsx`.
+
+**Wiring:** `/api/analyze` now runs company resolution client-side first (Prep
+form drops its old manual "Company" field entirely -- resolved from pasted
+notes via `/api/resolve-company`, pausing on ambiguous/not-found rather than
+guessing), then runs the 4 research calls **in parallel with** `extractStakeholders`
+(notes-only, doesn't need research) rather than serially after it -- the one
+concurrency win over the spec's default sequencing. `scoreMeddpicc`,
+`matchCaseStudies`, `draftPrepEmail`, and `generateQuestions` each gained an
+optional research param (pre-seed Identified Pain/Metrics, match on evidenced
+pain not just vertical, ground the email in a cited fact, build discovery
+questions from section 8's gaps instead of cold-starting). `generateVeWorkshopQuestions`
+gained a `candidate_drivers` param carrying research's value-driver hypotheses
+and cost-of-doing-nothing seeds through to the VE stage.
+
+**Bug caught during verification:** the shared `parseJson` (analysis.ts) assumes
+a fenced JSON block starts at the top of the response -- fine for the rest of
+the app's prompts, but web_search-backed calls sometimes reason in prose before
+their final JSON block (e.g. weighing ambiguous company candidates), which broke
+its fence detection. Added a local `parseResearchJson` in research.ts (prefers
+the last fenced block in the response) rather than touching the shared helper
+used by ~20 other prompts. Also hit real truncation on the initial token
+budgets against a deliberately worst-case test company (Stripe -- extremely
+well-documented, unbounded evidence volume); fixed by adding explicit per-field/
+per-list caps to the prompts (not just raising max_tokens, which alone wasn't
+enough) so output stays bounded regardless of how much is publicly written
+about a prospect.
+
+**Verified:** full production build (`next build`) clean, `tsc`/`eslint` clean
+throughout. Company resolution smoke-tested live against real companies
+(resolved/ambiguous/not-found paths all correct). Full 9-section research
+pipeline smoke-tested live end-to-end against a real company (Stripe) via a
+temporary debug route (removed after verification) -- real citations, tiered
+sourcing, honest "not found" on gaps, fact/inference split, cross-referenced
+source log all confirmed working. **Not yet verified in the actual browser UI**
+(Claude browser extension wasn't connected this session) -- the Prep form flow,
+deal-page CTA/diff, and full section rendering are built and type-safe but
+haven't been click-tested end-to-end by a human yet.
+
+### Outstanding
+- **Run the Migration v9 block in `supabase/schema.sql` before testing** --
+  not yet applied to the live database.
+- Click through the actual Prep flow and deal-page research card in the browser
+  before considering this done -- only the API layer and component rendering
+  were verified this session.
+- VE stage's `generateValueProposal` itself doesn't yet consume research's
+  cost-of-doing-nothing seed as a driver candidate -- only the workshop
+  *questions* generator does. Worth revisiting once a live VE workshop exists
+  to test against.
+- Prep page's live-streaming view only renders the value-drivers section fully
+  (plus a step counter for the rest) -- the deal page has the full 9-section
+  renderer. Could upgrade the Prep stream to full section-by-section rendering
+  too, reusing the same components, if that granularity turns out to matter in
+  practice.
+
+## Prior state (2026-07-07, salesroom task segmentation + delete-deal)
 
 Continuation of the same-day session, after the PDF extraction fix below.
 
