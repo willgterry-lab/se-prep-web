@@ -1,5 +1,169 @@
 # Session log
 
+## Current state (2026-07-08, mid-session pause — demo fixes + "Improvements to SE Agent" in progress)
+
+**Paused mid-task, user had to leave for a train.** This entry is a handoff note for
+picking the session back up cold. Read this before doing anything else.
+
+### What happened this session, in order
+1. Shipped the full Prospect Research feature (see the entry below this one for
+   full detail) -- Migration v9, 9-section research brief, company resolution,
+   deal-screen integration, downstream MEDDPICC/case-study/email grounding.
+2. **Live demo debugging**, all shipped and confirmed live on
+   `se-prep-web.vercel.app`:
+   - Fixed intermittent JSON parse failures in the research pipeline (model
+     sometimes adds a prose lead-in before its JSON despite instructions not
+     to -- added a retry wrapper `createAndParse` in `research.ts`, plus a
+     stronger prompt instruction).
+   - Found via production logs (`vercel logs`, not guesswork) that
+     `/api/analyze`'s `maxDuration=120` was too tight for the real research
+     pipeline against a data-rich company -- raised to 300s.
+   - Same root cause pre-existed on `post-call`/`pov`/`value-engineering`
+     (60s, each chains 7-9 Claude calls) -- raised all to 120s proactively
+     before they caused the same failure live.
+   - **Built a demo-day cache for "Kitwave Group"**: the user gave me the
+     real AE discovery transcript PDF they'll paste live. Generated the full
+     prep brief for real (research + MEDDPICC + case studies + email +
+     stakeholders) against the actual Choco product context and that exact
+     transcript, baked it into `src/lib/demo-fixtures/kitwave-group.ts`.
+     When the resolved company matches `/kitwave/i` (see `getDemoCache` in
+     `research.ts`), the pipeline serves this cached brief with paced NDJSON
+     event emission (~5.5s) instead of ~60-100s of live generation. Company
+     resolution also fast-paths in `resolveCompany()` itself. **If the user
+     pastes different/edited notes for the "same" demo, the cached content
+     is still what's served -- it does not re-read the live text.**
+3. User then sent `~/Downloads/Improvements to SE Agent.pdf` -- a 4-part
+   feedback doc, confirmed **all parts are demo-critical**. Read this PDF
+   again from disk if it's still there; full text is summarized below since
+   the file may not persist.
+
+### The "Improvements to SE Agent" ask, in full (paraphrased from the PDF)
+1. **Reorder the flow**: research should run FIRST, before a deal exists --
+   paste just a company URL/name, it creates the deal once research
+   completes. Rationale: an AE should be able to use this as part of their
+   own initial prep, without needing discovery notes yet.
+2. **Make the Prep (pre-call) stage optional**: Choco doesn't always have a
+   separate AE discovery call before the SC joins. A deal with research but
+   no calls logged yet should offer two choices: **"Upload AE Discovery to
+   prep for first SC Call"** (today's Prep flow, minus company
+   resolution/creation which already happened) and **"Post Initial SC call
+   analysis"** (skip Prep entirely, log the first real call directly).
+3. **Research step UI**: too text-heavy/messy -- ***DONE, shipped, see below.***
+4. **VE report**: too text-heavy; switch PDF output to DOCX; add a download
+   button; add a re-upload feature so an offline-edited DOCX becomes the new
+   downloadable artifact. User explicitly chose "store the uploaded file as
+   the new artifact only, don't attempt to re-parse edits back into
+   structured deal data" (simpler, no silent-corruption risk) when I asked.
+
+### Done this sub-session (commit `e620e14`, pushed and live)
+**Item 3 (research UI) is complete.** Rewrote `src/components/research-brief-view.tsx`:
+- `ResearchBriefFullView` is now a `Tabs` layout: an Exec Summary tab (one
+  short line per section, derived client-side from already-generated
+  structured data -- no new AI call) plus one tab per section (10 tabs
+  total including the Sources/source-log tab).
+- Inline evidence quotes (the "blue Web pill + full quote" pattern) replaced
+  with small numbered footnote markers (`CiteMark`, e.g. `[1]`) next to each
+  claim, linking to a `SourcesList` at the bottom of that same tab. New
+  `CitationTracker` class dedupes citations per section by URL (falls back
+  to origin+text for notes evidence). Each section component (`CompanySnapshotSectionView`,
+  etc.) still self-contained with its own Card + own citation tracker, so it
+  still works standalone in the Prep streaming context, not just inside the
+  new tabbed full view.
+- Also extracted `runResearchOnlyPipeline` in `research.ts` -- the research-only
+  (no MEDDPICC/case-study/email) Promise.all orchestration that was inline in
+  `/api/deals/[id]/research/route.ts` -- into a reusable exported function,
+  in prep for the new "New deal" entry point needing the same logic. **This
+  function is written and type-checks/builds clean, but is not yet wired up
+  anywhere -- `/api/deals/[id]/research/route.ts` still has its own
+  untouched, working, duplicate inline copy.** Next step should either wire
+  both callers to use the shared function, or at minimum wire the new one.
+
+### Not started yet: items 1, 2, and 4
+**Item 1 + 2 (research-first flow + optional Prep) -- the bigger one, was mid-design when paused:**
+
+Planned approach (not yet built):
+- New top-level page `/deal/new`: company name/URL input only (reuse
+  `CompanyChip`/`CompanyOverrideInput`/`CompanyCandidatePicker`/`CompanyNotFound`
+  from `src/components/company-resolution.tsx`), resolves via
+  `/api/resolve-company`, then POSTs to a **new route `/api/deals` (POST,
+  doesn't exist yet)** which: creates the deal row immediately (`prospect_company`
+  = resolved name; `prospect_name` has no value at this point -- **schema
+  currently has `deals.prospect_name` as `not null`, plan was to default it
+  to `''` on this path and handle blank display gracefully in deal-view.tsx's
+  header/dashboard cards, rather than a nullable-column migration -- not yet
+  decided for certain, reconsider if a cleaner option exists**), then calls
+  `runResearchOnlyPipeline` with `discoveryNotes: ""` (no notes at this
+  stage) and streams the same `research_*` NDJSON events the existing
+  research routes use. On completion, redirect to `/deal/[id]`.
+- `deal-view.tsx`'s current post-call CTA (`!hasPostCall && briefs.length > 0`,
+  i.e. only shows once a prep brief exists) needs to change: once research
+  exists but **no briefs of any stage exist yet**, show both new choices
+  side by side:
+  - "Upload AE Discovery to prep for first SC Call" -> new page
+    `/deal/[id]/prep/new` (doesn't exist yet -- essentially today's
+    `brief/new/page.tsx` notes-paste UI, but scoped to an existing deal with
+    company/research already done, so it only needs a notes textarea +
+    submit, no company resolution step at all). Should ground
+    scoreMeddpicc/matchCaseStudies/draftPrepEmail/generateQuestions using the
+    deal's existing `research_briefs` row, same pattern as `/api/analyze`
+    already does.
+  - "Post Initial SC call analysis" -> **can reuse the existing
+    `/deal/[id]/post-call/new` page/route almost as-is** -- it already
+    handles `prevBrief` being null gracefully. The one real gap: today's
+    `post-call/route.ts` doesn't ground `scoreMeddpicc` in the deal's
+    research (`researchDrivers` param added to `scoreMeddpicc` this session,
+    but only `/api/analyze` passes it). Should fetch the deal's latest
+    `research_briefs` row and pass `sections.value_drivers` through, mirroring
+    what `/api/analyze/route.ts` already does. Worth doing regardless of the
+    optional-Prep feature, since post-call can now genuinely be the first
+    call logged on a deal.
+- Old `/brief/new` (paste-notes-first, auto-resolves company from the notes
+  themselves) was the PREVIOUS primary entry point -- decide whether to
+  retire it from the dashboard nav in favour of `/deal/new`, or keep both.
+  Leaning toward retiring/redirecting it, since the new flow supersedes it,
+  but this wasn't confirmed with the user.
+- Deal stage semantics: `deals.stage` defaults to `'prep'` and both
+  `post-call`/`pov`/`ve` routes already unconditionally
+  `.update({ stage: "post_call" })` etc. on save -- concluded **no schema/enum
+  change needed**, since `stage='prep'` already just means "default/initial",
+  not "a prep brief exists". `DealProgressBar`'s visual treatment of a
+  skipped Prep step wasn't checked -- worth a quick look so a deal that skips
+  straight to post-call doesn't look broken, but likely a cosmetic nit, not
+  a blocker.
+
+**Item 4 (VE report DOCX) -- not started at all:**
+- Needs a new dependency for DOCX generation (current export is
+  `@react-pdf/renderer`, PDF-only) -- likely the `docx` npm package.
+- Needs file storage for the upload path (user confirmed: uploaded DOCX
+  becomes the new downloadable artifact only, no re-parsing back into
+  `VeProposal` structured fields). This codebase has no Supabase Storage
+  usage anywhere yet -- will need a bucket created (via `supabaseAdmin.storage.createBucket`,
+  service-role key already available in `.env.local`) and a new column,
+  something like `deals.ve_document_url`, to point at the latest artifact
+  (generated DOCX by default, replaced by the uploaded one if present).
+- "Tidy up, less text-heavy" -- content/layout edit to whatever the DOCX
+  template ends up being, same spirit as the research UI cleanup.
+
+### Everything currently pushed and live
+`origin/main` is at `e620e14` (verified via `git fetch` + `git rev-parse`,
+not just trusting `git push` output -- that's been the standard verification
+step all session, keep doing it). Production (`se-prep-web.vercel.app`) auto-deploys
+on push via Vercel's GitHub integration -- confirm the new deployment is
+`Ready` and aliased to the production URL before telling the user something
+is live (`vercel ls se-prep-web` then `vercel inspect https://se-prep-web.vercel.app`),
+same pattern used all session.
+
+### Outstanding / must re-verify next session
+- **Migration v9 is applied** (user confirmed ran it in the Supabase SQL editor).
+- Nothing in this session's UI changes has been click-tested in a real
+  browser by me -- the user was doing that live, hence the bug reports this
+  session. Chrome extension connection has been flaky (worked once, then
+  user took over browser control directly). Don't assume anything renders
+  correctly beyond `tsc`/`eslint`/`next build` passing -- verify live once
+  the flow-reorder work is far enough along to test end to end.
+- Dev server (`npm run dev`, port 3000) may or may not still be running
+  locally -- check `lsof -ti:3000` before assuming either way.
+
 ## Current state (2026-07-08, Prospect Research feature — Migration v9)
 
 Built the Prospect Research feature end to end, per the spec in the pasted
