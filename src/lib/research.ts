@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { anthropic, MODEL } from "@/lib/anthropic"
-import { parseJson, stripEmDashes } from "@/lib/analysis"
+import { parseJson, stripEmDashes, extractStakeholders } from "@/lib/analysis"
 import {
   KITWAVE_COMPANY,
   KITWAVE_SECTIONS,
@@ -210,6 +210,78 @@ export async function emitCachedBrief(
   emit({ type: "case_studies", data: cache.caseStudies })
   await new Promise((resolve) => setTimeout(resolve, delayMs))
   emit({ type: "email", data: cache.email })
+}
+
+// Research-only pipeline (no MEDDPICC/case-study/email) -- shared by the two
+// callers that need research without a full Prep brief: the manual "Run
+// research" deal-page action and the research-first "New deal" entry point.
+// Streams the same nine research_* events either way; DB writes stay with the
+// caller since they need the caller's own dealId/supabase context.
+export async function runResearchOnlyPipeline(params: {
+  company: ResolvedCompany
+  discoveryNotes: string
+  product: ProductContext
+  emit: (event: object) => void
+}): Promise<{ sections: ResearchSections; sourceLog: SourceLogEntry[]; notesStakeholders: ExtractedStakeholder[] }> {
+  const { company, discoveryNotes, product, emit } = params
+  const demoCache = getDemoCache(company.name)
+
+  const [research, notesStakeholders] = await Promise.all([
+    demoCache
+      ? emitCachedResearch(demoCache, emit).then(() => ({ sections: demoCache.sections, sourceLog: demoCache.sourceLog }))
+      : (async (): Promise<{ sections: ResearchSections; sourceLog: SourceLogEntry[] }> => {
+          const [snapshotAndContext, operatingModel, stakeholdersAndSignals, driversAndRisks] = await Promise.all([
+            researchSnapshotAndContext(company).then((r) => {
+              emit({ type: "research_snapshot", data: r.snapshot })
+              emit({ type: "research_strategic_context", data: r.strategic_context })
+              return r
+            }),
+            researchOperatingModel(company, CHOCO_OPERATING_MODEL_LENS).then((r) => {
+              emit({ type: "research_operating_model", data: r })
+              return r
+            }),
+            researchStakeholdersAndSignals(company).then((r) => {
+              emit({ type: "research_stakeholders", data: r.stakeholders })
+              emit({ type: "research_buying_signals", data: r.buying_signals })
+              return r
+            }),
+            researchValueDriversAndRisks({
+              company,
+              discovery_notes: discoveryNotes,
+              product,
+              taxonomy: CHOCO_VALUE_DRIVER_TAXONOMY,
+            }).then((r) => {
+              emit({ type: "research_value_drivers", data: r.value_drivers })
+              emit({ type: "research_risks", data: r.risks })
+              return r
+            }),
+          ])
+
+          const sectionsWithoutQuestions = {
+            snapshot: snapshotAndContext.snapshot,
+            strategic_context: snapshotAndContext.strategic_context,
+            operating_model: operatingModel,
+            value_drivers: driversAndRisks.value_drivers,
+            stakeholders: stakeholdersAndSignals.stakeholders,
+            buying_signals: stakeholdersAndSignals.buying_signals,
+            risks: driversAndRisks.risks,
+          }
+
+          const discoveryQuestions = await researchDiscoveryQuestions({
+            discovery_notes: discoveryNotes,
+            sections: sectionsWithoutQuestions,
+          })
+          emit({ type: "research_discovery_questions", data: discoveryQuestions })
+
+          const sections: ResearchSections = { ...sectionsWithoutQuestions, discovery_questions: discoveryQuestions }
+          const sourceLog = buildSourceLog(sections)
+          emit({ type: "research_source_log", data: sourceLog })
+          return { sections, sourceLog }
+        })(),
+    discoveryNotes ? extractStakeholders(discoveryNotes, company.name) : Promise.resolve([]),
+  ])
+
+  return { sections: research.sections, sourceLog: research.sourceLog, notesStakeholders }
 }
 
 // Identifies the prospect company either from pasted notes/transcript (automatic
