@@ -66,7 +66,9 @@ Notes-derived evidence items (only where notes are given): {"text": "verbatim qu
 // pick the strongest evidence over exhaustive coverage so responses stay
 // within a reasonable token budget regardless of how much is publicly written
 // about the prospect.
-const CONCISION_GUIDANCE = `Be concise. Keep any reasoning between searches brief -- your final message should lead straight into the JSON. Per field or list, include at most the 2 strongest evidence items, not everything you found.`
+const CONCISION_GUIDANCE = `Be concise. Per field or list, include at most the 2 strongest evidence items, not everything you found.
+
+Your final message must consist of NOTHING but the JSON object -- no lead-in sentence of any kind (e.g. never write something like "I now have sufficient data, let me compile it" or "Here is the JSON"), no markdown fence, no trailing commentary. The very first character of your final message must be "{".`
 
 function lastText(message: Anthropic.Message): string {
   const blocks = message.content.filter(
@@ -93,6 +95,28 @@ function parseResearchJson<T>(raw: string): T {
   return parseJson<T>(raw)
 }
 
+// The model occasionally still breaks the "no prose" instruction non-
+// deterministically (confirmed by replaying an identical failing request and
+// getting a clean response the second time) -- a plain retry is the correct
+// fix for a probabilistic failure, cheaper and more robust than more string-
+// parsing gymnastics. Only re-issues the request (full cost) when parsing
+// actually failed, never speculatively.
+async function createAndParse<T>(
+  params: Anthropic.MessageCreateParamsNonStreaming,
+  attempts = 2
+): Promise<T> {
+  let lastError: unknown
+  for (let i = 0; i < attempts; i++) {
+    const message = await anthropic.messages.create(params)
+    try {
+      return parseResearchJson<T>(lastText(message))
+    } catch (e) {
+      lastError = e
+    }
+  }
+  throw lastError
+}
+
 // Identifies the prospect company either from pasted notes/transcript (automatic
 // path) or a name/URL typed on the deal page (manual fallback). Never guesses
 // silently -- returns "ambiguous" with candidates, or "not_found", rather than
@@ -105,7 +129,7 @@ export async function resolveCompany(
       ? `The user entered this company name or URL directly: "${input.name_or_url}"`
       : `Identify the prospect company mentioned in this sales call text (the company being sold to, not the seller):\n\n${input.text.slice(0, 4000)}`
 
-  const message = await anthropic.messages.create({
+  return createAndParse<CompanyResolution>({
     model: MODEL,
     max_tokens: 1024,
     tools: [WEB_SEARCH_TOOL],
@@ -129,8 +153,6 @@ Return ONLY valid JSON, no prose, no markdown fences, in exactly one of these sh
       },
     ],
   })
-
-  return parseResearchJson<CompanyResolution>(lastText(message))
 }
 
 function companyContextLine(company: ResolvedCompany): string {
@@ -142,7 +164,7 @@ function companyContextLine(company: ResolvedCompany): string {
 export async function researchSnapshotAndContext(
   company: ResolvedCompany
 ): Promise<{ snapshot: CompanySnapshotSection; strategic_context: StrategicContextSection }> {
-  const message = await anthropic.messages.create({
+  return createAndParse<{ snapshot: CompanySnapshotSection; strategic_context: StrategicContextSection }>({
     model: MODEL,
     max_tokens: 7000,
     tools: [WEB_SEARCH_TOOL_RESEARCH],
@@ -183,8 +205,6 @@ Every snapshot field's "evidence" array holds every EvidenceItem backing that fi
       },
     ],
   })
-
-  return parseResearchJson(lastText(message))
 }
 
 // Section 3: operating model, through the vendor's configurable lens.
@@ -192,7 +212,7 @@ export async function researchOperatingModel(
   company: ResolvedCompany,
   operatingModelLens: string = CHOCO_OPERATING_MODEL_LENS
 ): Promise<OperatingModelSection> {
-  const message = await anthropic.messages.create({
+  return createAndParse<OperatingModelSection>({
     model: MODEL,
     max_tokens: 6000,
     tools: [WEB_SEARCH_TOOL_RESEARCH],
@@ -220,8 +240,6 @@ Return ONLY valid JSON, no prose, no markdown fences:
       },
     ],
   })
-
-  return parseResearchJson(lastText(message))
 }
 
 // Sections 5-6: preliminary stakeholder map + buying signals. Grouped since
@@ -229,7 +247,7 @@ Return ONLY valid JSON, no prose, no markdown fences:
 export async function researchStakeholdersAndSignals(
   company: ResolvedCompany
 ): Promise<{ stakeholders: StakeholderMapSection; buying_signals: BuyingSignalsSection }> {
-  const message = await anthropic.messages.create({
+  return createAndParse<{ stakeholders: StakeholderMapSection; buying_signals: BuyingSignalsSection }>({
     model: MODEL,
     max_tokens: 7000,
     tools: [WEB_SEARCH_TOOL_RESEARCH],
@@ -263,8 +281,6 @@ Return ONLY valid JSON, no prose, no markdown fences:
       },
     ],
   })
-
-  return parseResearchJson(lastText(message))
 }
 
 // Sections 4 and 7 -- the core section (value driver hypotheses) plus risks and
@@ -280,7 +296,7 @@ export async function researchValueDriversAndRisks(params: {
   const taxonomy = params.taxonomy ?? CHOCO_VALUE_DRIVER_TAXONOMY
   const taxonomyText = taxonomy.map((t) => `"${t.key}" (${t.label})`).join(", ")
 
-  const message = await anthropic.messages.create({
+  return createAndParse<{ value_drivers: ValueDriverSection; risks: RisksSection }>({
     model: MODEL,
     max_tokens: 9000,
     tools: [WEB_SEARCH_TOOL_RESEARCH],
@@ -341,8 +357,6 @@ If matched_case_study is not null, reproduce the exact fields from the case stud
       },
     ],
   })
-
-  return parseResearchJson(lastText(message))
 }
 
 // Section 8 -- generated from the gaps and unknowns in the sections already
@@ -352,7 +366,7 @@ export async function researchDiscoveryQuestions(params: {
   discovery_notes: string
   sections: Omit<ResearchSections, "discovery_questions">
 }): Promise<DiscoveryQuestionsSection> {
-  const message = await anthropic.messages.create({
+  return createAndParse<DiscoveryQuestionsSection>({
     model: MODEL,
     max_tokens: 3000,
     messages: [
@@ -373,8 +387,6 @@ Return ONLY valid JSON, no prose, no markdown fences:
       },
     ],
   })
-
-  return parseResearchJson(lastText(message))
 }
 
 // Section 9 -- computed, not generated. Every web-origin EvidenceItem across
