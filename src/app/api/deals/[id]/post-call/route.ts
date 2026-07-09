@@ -11,8 +11,9 @@ import {
   detectCompletedTasks,
   extractCallDate,
 } from "@/lib/analysis"
+import { getCachedCall, emitCachedPostCall, matchCachedCompletedTasks } from "@/lib/research"
 import { upsertStakeholders } from "@/lib/stakeholders"
-import type { ProductContext, MeddpiccScore, Brief, ResearchSections } from "@/types"
+import type { ProductContext, MeddpiccScore, Brief, ResearchSections, RiskItem, NextAction, ExtractedStakeholder, MeddpiccDelta } from "@/types"
 
 // Chains scoreMeddpicc then seven more calls (risks/questions/email/actions/
 // stakeholders/completed-tasks/call-date, mostly parallel). 60s was already
@@ -83,58 +84,88 @@ export async function POST(
         controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"))
 
       try {
-        const meddpicc = await scoreMeddpicc(
-          transcript,
-          product,
-          deal.prospect_company,
-          prevBrief?.meddpicc,
-          researchDrivers
-        )
-        emit({ type: "meddpicc", data: meddpicc })
-
-        const delta = prevBrief ? computeDelta(prevBrief.meddpicc, meddpicc) : null
-        if (delta) emit({ type: "delta", data: delta })
-
         const today = new Date().toISOString().split("T")[0]
+        const cached = getCachedCall(transcript)
 
-        const [risks, questionsResult, email, actions, stakeholders, completedCandidates, resolvedCallDate] = await Promise.all([
-          identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
-            emit({ type: "risks", data: r })
-            return r
-          }),
-          updateQuestions(
-            transcript,
-            meddpicc,
-            prevBrief?.meddpicc?.suggested_questions,
-            product
-          ).then((r) => {
-            emit({ type: "questions", data: r })
-            return r
-          }),
-          draftPostCallEmail({
-            prospect_name: deal.prospect_name,
-            prospect_company: deal.prospect_company,
+        let meddpiccFull: MeddpiccScore
+        let delta: MeddpiccDelta | null
+        let risks: RiskItem[]
+        let email: string
+        let actions: NextAction[]
+        let stakeholders: ExtractedStakeholder[]
+        let completedCandidates: { task_id: string; evidence: string }[]
+        let resolvedCallDate: string | null
+
+        if (cached && cached.kind === "post_call") {
+          const fixture = cached.fixture
+          await emitCachedPostCall(fixture, emit)
+          meddpiccFull = fixture.meddpicc
+          delta = fixture.delta
+          risks = fixture.risks
+          email = fixture.email
+          actions = fixture.actions
+          stakeholders = fixture.stakeholders
+          completedCandidates = matchCachedCompletedTasks(openTasks ?? [], fixture.completedTasks)
+          resolvedCallDate = call_date ?? fixture.callDate
+        } else {
+          const meddpicc = await scoreMeddpicc(
             transcript,
             product,
-            meddpicc,
-            sc_name: scName,
-          }).then((r) => {
-            emit({ type: "email", data: r })
-            return r
-          }),
-          generateNextActions(transcript, deal.prospect_company, today).then((r) => {
-            emit({ type: "actions", data: r })
-            return r
-          }),
-          extractStakeholders(transcript, deal.prospect_company),
-          detectCompletedTasks(openTasks ?? [], transcript),
-          call_date ? Promise.resolve(call_date as string) : extractCallDate(transcript),
-        ])
+            deal.prospect_company,
+            prevBrief?.meddpicc,
+            researchDrivers
+          )
+          emit({ type: "meddpicc", data: meddpicc })
 
-        const meddpiccFull: MeddpiccScore = {
-          ...meddpicc,
-          suggested_questions: questionsResult.open,
-          answered_questions: questionsResult.answered,
+          delta = prevBrief ? computeDelta(prevBrief.meddpicc, meddpicc) : null
+          if (delta) emit({ type: "delta", data: delta })
+
+          const [riskResult, questionsResult, emailResult, actionsResult, stakeholdersResult, completedResult, callDateResult] = await Promise.all([
+            identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
+              emit({ type: "risks", data: r })
+              return r
+            }),
+            updateQuestions(
+              transcript,
+              meddpicc,
+              prevBrief?.meddpicc?.suggested_questions,
+              product
+            ).then((r) => {
+              emit({ type: "questions", data: r })
+              return r
+            }),
+            draftPostCallEmail({
+              prospect_name: deal.prospect_name,
+              prospect_company: deal.prospect_company,
+              transcript,
+              product,
+              meddpicc,
+              sc_name: scName,
+            }).then((r) => {
+              emit({ type: "email", data: r })
+              return r
+            }),
+            generateNextActions(transcript, deal.prospect_company, today).then((r) => {
+              emit({ type: "actions", data: r })
+              return r
+            }),
+            extractStakeholders(transcript, deal.prospect_company),
+            detectCompletedTasks(openTasks ?? [], transcript),
+            call_date ? Promise.resolve(call_date as string) : extractCallDate(transcript),
+          ])
+
+          risks = riskResult
+          email = emailResult
+          actions = actionsResult
+          stakeholders = stakeholdersResult
+          completedCandidates = completedResult
+          resolvedCallDate = callDateResult
+
+          meddpiccFull = {
+            ...meddpicc,
+            suggested_questions: questionsResult.open,
+            answered_questions: questionsResult.answered,
+          }
         }
 
         const { data: brief, error: briefError } = await supabase

@@ -13,8 +13,19 @@ import {
   detectCompletedTasks,
   extractCallDate,
 } from "@/lib/analysis"
+import { getCachedCall, emitCachedVe, matchCachedCompletedTasks } from "@/lib/research"
 import { upsertStakeholders } from "@/lib/stakeholders"
-import type { ProductContext, MeddpiccScore, Brief, VeBaselineInput } from "@/types"
+import type {
+  ProductContext,
+  MeddpiccScore,
+  Brief,
+  VeBaselineInput,
+  MatchedCaseStudy,
+  RiskItem,
+  NextAction,
+  ExtractedStakeholder,
+  MeddpiccDelta,
+} from "@/types"
 
 // Chains an even longer sequence than post-call (adds matchCaseStudies and
 // extractVeBaseline). See the comment on post-call's maxDuration for why 60s
@@ -69,66 +80,103 @@ export async function POST(
         controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"))
 
       try {
-        // Phase 1: score MEDDPICC, match case studies, extract baseline in parallel
-        const [meddpicc, caseStudies, baseline] = await Promise.all([
-          scoreMeddpicc(transcript, product, deal.prospect_company, prevBrief?.meddpicc).then((r) => {
-            emit({ type: "meddpicc", data: r })
-            return r
-          }),
-          matchCaseStudies(transcript, product).then((r) => {
-            emit({ type: "case_studies", data: r })
-            return r
-          }),
-          extractVeBaseline(transcript, product, deal.prospect_company).then((r) => {
-            emit({ type: "baseline", data: r })
-            return r
-          }),
-        ])
-
-        const delta = prevBrief ? computeDelta(prevBrief.meddpicc, meddpicc) : null
-        if (delta) emit({ type: "delta", data: delta })
-
         const today = new Date().toISOString().split("T")[0]
+        const cached = getCachedCall(transcript)
 
-        // Phase 2: downstream analysis in parallel
-        const [risks, questionsResult, email, actions, stakeholders, completedCandidates, resolvedCallDate] = await Promise.all([
-          identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
-            emit({ type: "risks", data: r })
-            return r
-          }),
-          updateQuestions(
-            transcript,
-            meddpicc,
-            prevBrief?.meddpicc?.suggested_questions,
-            product
-          ).then((r) => {
-            emit({ type: "questions", data: r })
-            return r
-          }),
-          draftVeCallEmail({
-            prospect_name: deal.prospect_name,
-            prospect_company: deal.prospect_company,
-            transcript,
-            product,
-            baseline_inputs: baseline as VeBaselineInput[],
-            sc_name: scName,
-          }).then((r) => {
-            emit({ type: "email", data: r })
-            return r
-          }),
-          generateNextActions(transcript, deal.prospect_company, today).then((r) => {
-            emit({ type: "actions", data: r })
-            return r
-          }),
-          extractStakeholders(transcript, deal.prospect_company),
-          detectCompletedTasks(openTasks ?? [], transcript),
-          call_date ? Promise.resolve(call_date as string) : extractCallDate(transcript),
-        ])
+        let meddpiccFull: MeddpiccScore
+        let caseStudies: MatchedCaseStudy[]
+        let baseline: VeBaselineInput[]
+        let delta: MeddpiccDelta | null
+        let risks: RiskItem[]
+        let email: string
+        let actions: NextAction[]
+        let stakeholders: ExtractedStakeholder[]
+        let completedCandidates: { task_id: string; evidence: string }[]
+        let resolvedCallDate: string | null
 
-        const meddpiccFull: MeddpiccScore = {
-          ...meddpicc,
-          suggested_questions: questionsResult.open,
-          answered_questions: questionsResult.answered,
+        if (cached && cached.kind === "ve") {
+          const fixture = cached.fixture
+          await emitCachedVe(fixture, emit)
+          meddpiccFull = fixture.meddpicc
+          caseStudies = fixture.caseStudies
+          baseline = fixture.baseline
+          delta = fixture.delta
+          risks = fixture.risks
+          email = fixture.email
+          actions = fixture.actions
+          stakeholders = fixture.stakeholders
+          completedCandidates = matchCachedCompletedTasks(openTasks ?? [], fixture.completedTasks)
+          resolvedCallDate = call_date ?? fixture.callDate
+        } else {
+          // Phase 1: score MEDDPICC, match case studies, extract baseline in parallel
+          const [meddpicc, caseStudiesResult, baselineResult] = await Promise.all([
+            scoreMeddpicc(transcript, product, deal.prospect_company, prevBrief?.meddpicc).then((r) => {
+              emit({ type: "meddpicc", data: r })
+              return r
+            }),
+            matchCaseStudies(transcript, product).then((r) => {
+              emit({ type: "case_studies", data: r })
+              return r
+            }),
+            extractVeBaseline(transcript, product, deal.prospect_company).then((r) => {
+              emit({ type: "baseline", data: r })
+              return r
+            }),
+          ])
+
+          caseStudies = caseStudiesResult
+          baseline = baselineResult as VeBaselineInput[]
+
+          delta = prevBrief ? computeDelta(prevBrief.meddpicc, meddpicc) : null
+          if (delta) emit({ type: "delta", data: delta })
+
+          // Phase 2: downstream analysis in parallel
+          const [riskResult, questionsResult, emailResult, actionsResult, stakeholdersResult, completedResult, callDateResult] = await Promise.all([
+            identifyRisks(transcript, meddpicc, product, deal.prospect_company, prevBrief?.risks).then((r) => {
+              emit({ type: "risks", data: r })
+              return r
+            }),
+            updateQuestions(
+              transcript,
+              meddpicc,
+              prevBrief?.meddpicc?.suggested_questions,
+              product
+            ).then((r) => {
+              emit({ type: "questions", data: r })
+              return r
+            }),
+            draftVeCallEmail({
+              prospect_name: deal.prospect_name,
+              prospect_company: deal.prospect_company,
+              transcript,
+              product,
+              baseline_inputs: baseline,
+              sc_name: scName,
+            }).then((r) => {
+              emit({ type: "email", data: r })
+              return r
+            }),
+            generateNextActions(transcript, deal.prospect_company, today).then((r) => {
+              emit({ type: "actions", data: r })
+              return r
+            }),
+            extractStakeholders(transcript, deal.prospect_company),
+            detectCompletedTasks(openTasks ?? [], transcript),
+            call_date ? Promise.resolve(call_date as string) : extractCallDate(transcript),
+          ])
+
+          risks = riskResult
+          email = emailResult
+          actions = actionsResult
+          stakeholders = stakeholdersResult
+          completedCandidates = completedResult
+          resolvedCallDate = callDateResult
+
+          meddpiccFull = {
+            ...meddpicc,
+            suggested_questions: questionsResult.open,
+            answered_questions: questionsResult.answered,
+          }
         }
 
         const { data: brief, error: briefError } = await supabase

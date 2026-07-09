@@ -11,6 +11,16 @@ import {
   KITWAVE_EMAIL,
   KITWAVE_NOTES_STAKEHOLDERS,
 } from "@/lib/demo-fixtures/kitwave-group"
+import {
+  KITWAVE_POST_CALL,
+  KITWAVE_POV_1,
+  KITWAVE_POV_2,
+  KITWAVE_POV_3,
+  KITWAVE_VE,
+  type CachedPostCallFixture,
+  type CachedPovFixture,
+  type CachedVeFixture,
+} from "@/lib/demo-fixtures/kitwave-calls"
 import type {
   CompanyResolution,
   ResolvedCompany,
@@ -221,6 +231,120 @@ export async function emitCachedBrief(
   emit({ type: "case_studies", data: cache.caseStudies })
   await new Promise((resolve) => setTimeout(resolve, delayMs))
   emit({ type: "email", data: cache.email })
+}
+
+// ─── Demo cache: call-stage fixtures (post-call / POV / VE) ───────────────────
+// Same idea as the research+prep cache above, extended to the four remaining
+// analysis stages so a full Kitwave demo -- research through VE -- stays inside
+// a 10-20s-per-stage budget instead of the real ~60-120s chained-call latency.
+// Matched by the call transcript's own distinctive title line rather than
+// company name, since post-call/POV/VE all receive a pasted transcript, not a
+// company name/URL, and the five real Kitwave transcripts this was built from
+// each have a unique "Call Transcript: <title>" header.
+type DemoCallCacheEntry =
+  | { pattern: RegExp; kind: "post_call"; fixture: CachedPostCallFixture }
+  | { pattern: RegExp; kind: "pov"; fixture: CachedPovFixture }
+  | { pattern: RegExp; kind: "ve"; fixture: CachedVeFixture }
+
+const DEMO_CALL_CACHE: DemoCallCacheEntry[] = [
+  { pattern: /SC First Call/i, kind: "post_call", fixture: KITWAVE_POST_CALL },
+  { pattern: /Trial Setup Call/i, kind: "pov", fixture: KITWAVE_POV_1 },
+  { pattern: /Trial Check-in Call/i, kind: "pov", fixture: KITWAVE_POV_2 },
+  { pattern: /Final POV Check-in Call/i, kind: "pov", fixture: KITWAVE_POV_3 },
+  { pattern: /Value Engineering Workshop Call/i, kind: "ve", fixture: KITWAVE_VE },
+]
+
+export function getCachedCall(transcript: string): DemoCallCacheEntry | null {
+  return DEMO_CALL_CACHE.find((entry) => entry.pattern.test(transcript)) ?? null
+}
+
+function questionsEventFromMeddpicc(meddpicc: MeddpiccScore) {
+  return { open: meddpicc.suggested_questions, answered: meddpicc.answered_questions }
+}
+
+export async function emitCachedPostCall(
+  fixture: CachedPostCallFixture,
+  emit: (event: object) => void,
+  delayMs = 2000
+): Promise<void> {
+  const steps: Array<() => void> = [
+    () => emit({ type: "meddpicc", data: fixture.meddpicc }),
+    () => {
+      if (fixture.delta) emit({ type: "delta", data: fixture.delta })
+    },
+    () => emit({ type: "risks", data: fixture.risks }),
+    () => emit({ type: "questions", data: questionsEventFromMeddpicc(fixture.meddpicc) }),
+    () => emit({ type: "email", data: fixture.email }),
+    () => emit({ type: "actions", data: fixture.actions }),
+  ]
+  for (const step of steps) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    step()
+  }
+}
+
+export async function emitCachedPov(
+  fixture: CachedPovFixture,
+  emit: (event: object) => void,
+  delayMs = 1800
+): Promise<void> {
+  const steps: Array<() => void> = [() => emit({ type: "meddpicc", data: fixture.meddpicc })]
+  if (fixture.criteria) steps.push(() => emit({ type: "criteria", data: fixture.criteria }))
+  steps.push(
+    () => {
+      if (fixture.delta) emit({ type: "delta", data: fixture.delta })
+    },
+    () => emit({ type: "pov_assessment", data: fixture.povAssessment }),
+    () => emit({ type: "risks", data: fixture.risks }),
+    () => emit({ type: "questions", data: questionsEventFromMeddpicc(fixture.meddpicc) }),
+    () => emit({ type: "email", data: fixture.email }),
+    () => emit({ type: "actions", data: fixture.actions })
+  )
+  for (const step of steps) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    step()
+  }
+}
+
+export async function emitCachedVe(
+  fixture: CachedVeFixture,
+  emit: (event: object) => void,
+  delayMs = 1700
+): Promise<void> {
+  const steps: Array<() => void> = [
+    () => emit({ type: "meddpicc", data: fixture.meddpicc }),
+    () => emit({ type: "case_studies", data: fixture.caseStudies }),
+    () => emit({ type: "baseline", data: fixture.baseline }),
+    () => {
+      if (fixture.delta) emit({ type: "delta", data: fixture.delta })
+    },
+    () => emit({ type: "risks", data: fixture.risks }),
+    () => emit({ type: "questions", data: questionsEventFromMeddpicc(fixture.meddpicc) }),
+    () => emit({ type: "email", data: fixture.email }),
+    () => emit({ type: "actions", data: fixture.actions }),
+  ]
+  for (const step of steps) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    step()
+  }
+}
+
+// Matches real open deal_tasks (fetched fresh from the DB by the caller)
+// against a cached fixture's completed-task descriptions -- the fixture was
+// baked from a debug run with synthetic task ids that don't exist in
+// production, so description text (stable, since it's the exact text that
+// stage's own `actions` get inserted as) is the only thing that can be
+// matched against real rows.
+export function matchCachedCompletedTasks(
+  openTasks: { id: string; description: string }[],
+  fixtureCompleted: { description: string; evidence: string }[]
+): { task_id: string; evidence: string }[] {
+  const out: { task_id: string; evidence: string }[] = []
+  for (const c of fixtureCompleted) {
+    const match = openTasks.find((t) => t.description === c.description)
+    if (match) out.push({ task_id: match.id, evidence: c.evidence })
+  }
+  return out
 }
 
 // Research-only pipeline (no MEDDPICC/case-study/email) -- shared by the two

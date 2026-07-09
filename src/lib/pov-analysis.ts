@@ -12,8 +12,20 @@ import {
   detectCompletedTasks,
   extractCallDate,
 } from "@/lib/analysis"
+import { getCachedCall, emitCachedPov, matchCachedCompletedTasks } from "@/lib/research"
 import { upsertStakeholders } from "@/lib/stakeholders"
-import type { ProductContext, MeddpiccScore, Brief, SuccessCriterion, PovCallType } from "@/types"
+import type {
+  ProductContext,
+  MeddpiccScore,
+  Brief,
+  SuccessCriterion,
+  PovCallType,
+  PovAssessment,
+  RiskItem,
+  NextAction,
+  ExtractedStakeholder,
+  MeddpiccDelta,
+} from "@/types"
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -80,81 +92,133 @@ export async function runSinglePovAnalysis({
     .eq("deal_id", dealId)
     .eq("status", "open")
 
-  const [meddpicc, extractionResult] = await Promise.all([
-    scoreMeddpicc(transcript, product, dealRow.prospect_company, prevBrief?.meddpicc).then((r) => {
-      emit({ type: "meddpicc", data: r })
-      return r
-    }),
-    needsExtraction
-      ? extractSuccessCriteria(transcript, product, dealRow.prospect_company).then((r) => {
-          emit({ type: "criteria", data: r.criteria })
-          return r
-        })
-      : Promise.resolve({ criteria: criteriaToUse, total_agreed: criteriaToUse.length }),
-  ])
-
-  if (needsExtraction && extractionResult.criteria.length > 0) {
-    criteriaToUse = extractionResult.criteria
-    await supabase
-      .from("deals")
-      .update({
-        success_criteria: extractionResult.criteria,
-        success_criteria_total_agreed: extractionResult.total_agreed,
-      })
-      .eq("id", dealId)
-  }
-
-  if (!criteriaToUse.length) {
-    throw new Error(
-      "No success criteria could be extracted from the transcript. Add them manually on the deal page."
-    )
-  }
-
-  const delta = prevBrief ? computeDelta(prevBrief.meddpicc, meddpicc) : null
-  if (delta) emit({ type: "delta", data: delta })
-
   const today = new Date().toISOString().split("T")[0]
+  const cached = getCachedCall(transcript)
 
-  const [povAssessment, risks, questionsResult, email, actions, stakeholders, completedCandidates, resolvedCallDate] =
-    await Promise.all([
-      assessPovCriteria(transcript, criteriaToUse, product, dealRow.prospect_company).then((r) => {
-        emit({ type: "pov_assessment", data: r })
+  let meddpiccFull: MeddpiccScore
+  let delta: MeddpiccDelta | null
+  let povAssessment: PovAssessment[]
+  let risks: RiskItem[]
+  let email: string
+  let actions: NextAction[]
+  let stakeholders: ExtractedStakeholder[]
+  let completedCandidates: { task_id: string; evidence: string }[]
+  let resolvedCallDate: string | null
+
+  if (cached && cached.kind === "pov") {
+    const fixture = cached.fixture
+    await emitCachedPov(fixture, emit)
+
+    if (needsExtraction && fixture.criteria) {
+      criteriaToUse = fixture.criteria
+      await supabase
+        .from("deals")
+        .update({
+          success_criteria: fixture.criteria,
+          success_criteria_total_agreed: fixture.totalAgreed,
+        })
+        .eq("id", dealId)
+    }
+
+    if (!criteriaToUse.length) {
+      throw new Error(
+        "No success criteria could be extracted from the transcript. Add them manually on the deal page."
+      )
+    }
+
+    delta = fixture.delta
+    povAssessment = fixture.povAssessment
+    risks = fixture.risks
+    email = fixture.email
+    actions = fixture.actions
+    stakeholders = fixture.stakeholders
+    completedCandidates = matchCachedCompletedTasks(openTasks ?? [], fixture.completedTasks)
+    resolvedCallDate = call_date ?? fixture.callDate
+
+    meddpiccFull = fixture.meddpicc
+  } else {
+    const [meddpicc, extractionResult] = await Promise.all([
+      scoreMeddpicc(transcript, product, dealRow.prospect_company, prevBrief?.meddpicc).then((r) => {
+        emit({ type: "meddpicc", data: r })
         return r
       }),
-      identifyRisks(transcript, meddpicc, product, dealRow.prospect_company, prevBrief?.risks).then((r) => {
-        emit({ type: "risks", data: r })
-        return r
-      }),
-      updateQuestions(transcript, meddpicc, prevBrief?.meddpicc?.suggested_questions, product).then((r) => {
-        emit({ type: "questions", data: r })
-        return r
-      }),
-      draftPovCallEmail({
-        prospect_name: dealRow.prospect_name,
-        prospect_company: dealRow.prospect_company,
-        transcript,
-        product,
-        success_criteria: criteriaToUse,
-        pov_assessment: [], // populated after parallel resolve; email drafted without it
-        call_type,
-        sc_name: scName,
-      }).then((r) => {
-        emit({ type: "email", data: r })
-        return r
-      }),
-      generateNextActions(transcript, dealRow.prospect_company, today).then((r) => {
-        emit({ type: "actions", data: r })
-        return r
-      }),
-      extractStakeholders(transcript, dealRow.prospect_company),
-      detectCompletedTasks(openTasks ?? [], transcript),
-      call_date ? Promise.resolve(call_date) : extractCallDate(transcript),
+      needsExtraction
+        ? extractSuccessCriteria(transcript, product, dealRow.prospect_company).then((r) => {
+            emit({ type: "criteria", data: r.criteria })
+            return r
+          })
+        : Promise.resolve({ criteria: criteriaToUse, total_agreed: criteriaToUse.length }),
     ])
 
-  const meddpiccFull: MeddpiccScore = {
-    ...meddpicc,
-    suggested_questions: questionsResult.open,
-    answered_questions: questionsResult.answered,
+    if (needsExtraction && extractionResult.criteria.length > 0) {
+      criteriaToUse = extractionResult.criteria
+      await supabase
+        .from("deals")
+        .update({
+          success_criteria: extractionResult.criteria,
+          success_criteria_total_agreed: extractionResult.total_agreed,
+        })
+        .eq("id", dealId)
+    }
+
+    if (!criteriaToUse.length) {
+      throw new Error(
+        "No success criteria could be extracted from the transcript. Add them manually on the deal page."
+      )
+    }
+
+    delta = prevBrief ? computeDelta(prevBrief.meddpicc, meddpicc) : null
+    if (delta) emit({ type: "delta", data: delta })
+
+    const [povAssessmentResult, riskResult, questionsResult, emailResult, actionsResult, stakeholdersResult, completedResult, callDateResult] =
+      await Promise.all([
+        assessPovCriteria(transcript, criteriaToUse, product, dealRow.prospect_company).then((r) => {
+          emit({ type: "pov_assessment", data: r })
+          return r
+        }),
+        identifyRisks(transcript, meddpicc, product, dealRow.prospect_company, prevBrief?.risks).then((r) => {
+          emit({ type: "risks", data: r })
+          return r
+        }),
+        updateQuestions(transcript, meddpicc, prevBrief?.meddpicc?.suggested_questions, product).then((r) => {
+          emit({ type: "questions", data: r })
+          return r
+        }),
+        draftPovCallEmail({
+          prospect_name: dealRow.prospect_name,
+          prospect_company: dealRow.prospect_company,
+          transcript,
+          product,
+          success_criteria: criteriaToUse,
+          pov_assessment: [], // populated after parallel resolve; email drafted without it
+          call_type,
+          sc_name: scName,
+        }).then((r) => {
+          emit({ type: "email", data: r })
+          return r
+        }),
+        generateNextActions(transcript, dealRow.prospect_company, today).then((r) => {
+          emit({ type: "actions", data: r })
+          return r
+        }),
+        extractStakeholders(transcript, dealRow.prospect_company),
+        detectCompletedTasks(openTasks ?? [], transcript),
+        call_date ? Promise.resolve(call_date) : extractCallDate(transcript),
+      ])
+
+    povAssessment = povAssessmentResult
+    risks = riskResult
+    email = emailResult
+    actions = actionsResult
+    stakeholders = stakeholdersResult
+    completedCandidates = completedResult
+    resolvedCallDate = callDateResult
+
+    meddpiccFull = {
+      ...meddpicc,
+      suggested_questions: questionsResult.open,
+      answered_questions: questionsResult.answered,
+    }
   }
 
   const { data: brief, error: briefError } = await supabase
