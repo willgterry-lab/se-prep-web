@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, type ChangeEvent } from "react"
 import Link from "next/link"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -1480,15 +1480,20 @@ function VePublishSection({
   dealId,
   initialPublished,
   hasProposal,
+  initialDocumentUploadedAt,
   onTokenChange,
 }: {
   dealId: string
   initialPublished: boolean
   hasProposal: boolean
+  initialDocumentUploadedAt: string | null
   onTokenChange: (token: string) => void
 }) {
   const [published, setPublished] = useState(initialPublished)
   const [loading, setLoading] = useState(false)
+  const [documentUploadedAt, setDocumentUploadedAt] = useState(initialDocumentUploadedAt)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   async function toggle() {
     setLoading(true)
@@ -1511,12 +1516,46 @@ function VePublishSection({
     }
   }
 
+  async function handleUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = "" // allow re-selecting the same filename later
+    if (!file) return
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const body = new FormData()
+      body.append("file", file)
+      const res = await fetch(`/api/deals/${dealId}/ve-document`, { method: "POST", body })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Upload failed.")
+      setDocumentUploadedAt(data.uploaded_at)
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleRevert() {
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const res = await fetch(`/api/deals/${dealId}/ve-document`, { method: "DELETE" })
+      if (!res.ok) throw new Error("Failed to revert.")
+      setDocumentUploadedAt(null)
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Failed to revert.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Value proposal - salesroom</CardTitle>
         <CardDescription className="mt-1">
-          Publish the value proposal to the prospect salesroom, or download a PDF copy.
+          Publish the value proposal to the prospect salesroom, or download a DOCX copy.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-3">
@@ -1533,11 +1572,36 @@ function VePublishSection({
         </Button>
         {hasProposal && (
           <a
-            href={`/api/deals/${dealId}/ve-proposal.pdf`}
+            href={`/api/deals/${dealId}/ve-document`}
             className="text-sm text-gray-600 underline underline-offset-2 hover:text-gray-900"
           >
-            Download PDF
+            Download DOCX
           </a>
+        )}
+        {hasProposal && (
+          <label className="text-sm text-gray-600 underline underline-offset-2 hover:text-gray-900 cursor-pointer">
+            {uploading ? "Working..." : "Replace with edited version"}
+            <input
+              type="file"
+              accept=".docx"
+              className="hidden"
+              disabled={uploading}
+              onChange={handleUpload}
+            />
+          </label>
+        )}
+        {documentUploadedAt && (
+          <>
+            <span className="text-xs text-gray-400">Edited version uploaded</span>
+            <button
+              type="button"
+              onClick={handleRevert}
+              disabled={uploading}
+              className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-700"
+            >
+              Revert to generated
+            </button>
+          </>
         )}
         {published && (
           <span className="text-xs text-[#1ED760] font-medium">Live on salesroom</span>
@@ -1545,6 +1609,7 @@ function VePublishSection({
         {!hasProposal && (
           <p className="text-xs text-gray-400">Generate a value proposal above first.</p>
         )}
+        {uploadError && <p className="text-xs text-red-600 w-full">{uploadError}</p>}
       </CardContent>
     </Card>
   )
@@ -1673,9 +1738,6 @@ export function DealView({
       {/* Lifecycle progress */}
       <DealProgressBar stage={deal.stage} />
 
-      {/* Stakeholders */}
-      <StakeholdersCard dealId={deal.id} initialStakeholders={stakeholders} />
-
       {/* First-call choice: no brief of any stage exists yet. Research-first
           deals (via /deal/new) land here with a company and research already
           resolved but no Prep brief -- Prep is now optional, not a required
@@ -1756,6 +1818,20 @@ export function DealView({
           </CardContent>
         </Card>
       )}
+
+      {/* Prospect research, promoted to the top of the page while it's the
+          newest thing on the deal and no call has been logged yet -- the exec
+          summary tab plus the nine section tabs are the fastest way to get
+          oriented right after research finishes. Once a brief exists it drops
+          back to living inside the Research tab below, where it stays
+          reachable for re-runs without competing with call-stage content for
+          top billing. */}
+      {briefs.length === 0 && researchBriefs.length > 0 && (
+        <ResearchBriefFullView brief={researchBriefs[researchBriefs.length - 1]} />
+      )}
+
+      {/* Stakeholders */}
+      <StakeholdersCard dealId={deal.id} initialStakeholders={stakeholders} />
 
       <Tabs defaultValue="overview">
         <TabsList>
@@ -1870,6 +1946,7 @@ export function DealView({
                 dealId={deal.id}
                 initialPublished={deal.ve_published}
                 hasProposal={!!veProposal}
+                initialDocumentUploadedAt={deal.ve_document_uploaded_at}
                 onTokenChange={setShareToken}
               />
             </>
