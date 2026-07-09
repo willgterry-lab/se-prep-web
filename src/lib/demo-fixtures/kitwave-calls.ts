@@ -40,7 +40,7 @@ export interface CachedPostCallFixture {
 export const KITWAVE_POST_CALL: CachedPostCallFixture = {
   "meddpicc": {
     "metrics": {
-      "score": 3,
+      "score": 1,
       "evidence": "Sixty-eight percent of those arrive through a channel someone has to key by hand... Call it seven thousand eight hundred orders a week being keyed into Swords manually. / Six minutes on average... Voicemails run longer. / roughly forty-seven thousand minutes a week, call it seven hundred and eighty hours, across the division. / forty-six people across the ten sales offices, which fully loaded is about one point six million a year. / Peak overtime... came to about a hundred and ninety thousand last year. / Credits, re-picks and write-offs traced back to order and pricing errors are running at about one point two percent of division revenue, which on two hundred and forty million is about two point eight million a year. / The value creation plan gives the division two years to put a hundred and fifty basis points on operating margin.",
       "gap": "What is the fully-loaded revenue or margin contribution of the South West DC specifically, so pilot success criteria can be expressed in the same units Marcus will present to OEP? What threshold of basis-point improvement counts as a win in the July/August portfolio review?"
     },
@@ -50,17 +50,17 @@ export const KITWAVE_POST_CALL: CachedPostCallFixture = {
       "gap": "What is the exact spend threshold that triggers OEP involvement versus Marcus signing alone? Has Marcus seen any Choco materials directly yet, or is all framing still mediated through Gemma?"
     },
     "decision_criteria": {
-      "score": 3,
+      "score": 2,
       "evidence": "My bar, first, a genuine two-way integration, live pricing, live stock, live order history, not a batch file at midnight. Second, I want a data flow diagram showing exactly what leaves our environment, where it's processed and where it rests, GDPR is table stakes but... I'll want Cyber Essentials Plus evidenced and a recent pen test summary. Third, and this is the one that kills most vendors, I have no integration capacity to give you. If this needs six months of my people, it's dead on arrival. / Walking into the August portfolio review with results from the peak is a different conversation from results from a quiet April.",
       "gap": "What are Marcus's explicit quantitative success criteria for the pilot - specific error-rate reduction, hours saved, or credit-note reduction targets he would commit to ahead of the August review? Does OEP have its own evaluation criteria beyond the margin number?"
     },
     "decision_process": {
-      "score": 3,
+      "score": 1,
       "evidence": "Anything material goes through the monthly portfolio review with OEP, the next ones that matter for us are July and August. / Then the sequencing is, Andrea, a short technical session this week so integration and security are settled before anyone says the word contract, then a setup call with Marcus in the room to lock scope and success criteria, with Lee there too. / Send times for Thursday or Friday. I'd rather find the problems now than in a procurement thread in August. / If we went live mid-June we'd have four weeks of results by mid-July, which is ahead of the August review.",
       "gap": "Who runs procurement formally for a spend of this size - is there a Group procurement function or legal review step between Marcus approving and a contract being signed? Does OEP require a formal sign-off on new vendor relationships above a certain value?"
     },
     "paper_process": {
-      "score": 1,
+      "score": 0,
       "evidence": "I'd rather find the problems now than in a procurement thread in August.",
       "gap": "What does the formal procurement and legal process look like - is there a vendor onboarding checklist, standard contract terms, data processing agreement requirements, or insurance minimums set by OEP's diligence team? Who owns supplier contracts at Group level and what are typical cycle times?"
     },
@@ -70,7 +70,7 @@ export const KITWAVE_POST_CALL: CachedPostCallFixture = {
       "gap": "Has the cost of coordinator attrition risk (e.g. Dawn's near-departure) been formally quantified alongside the overtime and credit-note numbers? Is there a measured impact on customer satisfaction or churn from missed next-day cutoffs during peak?"
     },
     "champion": {
-      "score": 3,
+      "score": 2,
       "evidence": "I did, and it took some doing across ten sites. / I asked him directly. The value creation plan gives the division two years to put a hundred and fifty basis points on operating margin. / That's the version of brave Marcus tends to like. / And I'll get Marcus. If this is going into his review cycle, he'll want to have shaped the success criteria himself. / If we went live mid-June we'd have four weeks of results by mid-July, which is ahead of the August review. Tight but real.",
       "gap": "Has Gemma explicitly positioned Choco to Marcus as her recommended solution, or is she still presenting it as one of several options? Does she have a track record of successfully sponsoring third-party vendor initiatives through Marcus and the OEP review cycle?"
     },
@@ -79,8 +79,8 @@ export const KITWAVE_POST_CALL: CachedPostCallFixture = {
       "evidence": "What about the REKKI attempt at High Wycombe? I wasn't close to it, but the residue of it is that people here think this category doesn't work. / REKKI reads email and app-style orders reasonably well. It does nothing for phone and voicemail, which for you is roughly half of everything, and it had no path into Swords, so even what it did capture got re-keyed, which means it added a step instead of removing one. / That framing will land better with the group exec than 'your portal failed', for what it's worth.",
       "gap": "Is there any ongoing evaluation of other AI order-capture vendors, or has the REKKI failure effectively closed the market for alternatives internally? Is the Swords web ordering module extension still being actively considered by IT, or has Andrea formally parked it pending acquisition integrations?"
     },
-    "overall_score": 22,
-    "summary": "This is a highly advanced discovery position: all eight MEDDPICC elements are now scored, metrics have been quantified to a remarkable degree of specificity (£2.8M credit exposure, £1.6M team cost, 150bps margin mandate), the economic buyer's mandate and review cadence are explicit, and both the technical gatekeeper and champion have co-designed the pilot sequencing. The primary remaining risks are paper process opacity - procurement and legal cycle times are unknown and could compress the mid-June go-live - and the need to lock Marcus's own success criteria before the setup call so the August OEP narrative is built on agreed numbers rather than Choco's framing. Momentum is strong and the pilot site, timing, and internal urgency all align; the immediate priority is the Thursday/Friday technical session with Andrea followed by getting Marcus into a scoping call with pre-distributed success criteria before any procurement thread opens.",
+    "overall_score": 15,
+    "summary": "This is a promising early-stage discovery position: economic buyer mandate, identified pain, and competitive context are now well evidenced, but formal decision criteria, decision process, and paper process are still mostly unexplored, and the numbers so far (£2.8M credit exposure, £1.6M team cost, 150bps margin mandate) haven't yet been organised into a structured business case. The primary remaining risks are paper process opacity - procurement and legal cycle times are unknown and could compress the mid-June go-live - and the need to lock Marcus's own success criteria before the setup call so the August OEP narrative is built on agreed numbers rather than Choco's framing. Momentum is strong and the pilot site, timing, and internal urgency all align; the immediate priority is the Thursday/Friday technical session with Andrea followed by getting Marcus into a scoping call with pre-distributed success criteria before any procurement thread opens.",
     "suggested_questions": {
       "sc_intro": [
         "Lee Trevaskis needs to be onboard from the start -- what does he need to see first?",
@@ -117,8 +117,8 @@ export const KITWAVE_POST_CALL: CachedPostCallFixture = {
   "delta": {
     "metrics": {
       "prev": 1,
-      "curr": 3,
-      "change": 2
+      "curr": 1,
+      "change": 0
     },
     "economic_buyer": {
       "prev": 2,
@@ -127,18 +127,18 @@ export const KITWAVE_POST_CALL: CachedPostCallFixture = {
     },
     "decision_criteria": {
       "prev": 1,
-      "curr": 3,
-      "change": 2
+      "curr": 2,
+      "change": 1
     },
     "decision_process": {
       "prev": 1,
-      "curr": 3,
-      "change": 2
+      "curr": 1,
+      "change": 0
     },
     "paper_process": {
       "prev": 0,
-      "curr": 1,
-      "change": 1
+      "curr": 0,
+      "change": 0
     },
     "identify_pain": {
       "prev": 3,
@@ -147,8 +147,8 @@ export const KITWAVE_POST_CALL: CachedPostCallFixture = {
     },
     "champion": {
       "prev": 2,
-      "curr": 3,
-      "change": 1
+      "curr": 2,
+      "change": 0
     },
     "competition": {
       "prev": 2,
@@ -156,8 +156,8 @@ export const KITWAVE_POST_CALL: CachedPostCallFixture = {
       "change": 1
     },
     "overall_prev": 12,
-    "overall_curr": 22,
-    "overall_change": 10
+    "overall_curr": 15,
+    "overall_change": 3
   },
   "risks": [
     {
@@ -307,7 +307,7 @@ export interface CachedPovFixture {
 export const KITWAVE_POV_1: CachedPovFixture = {
   "meddpicc": {
     "metrics": {
-      "score": 3,
+      "score": 1,
       "evidence": "Sixty-eight percent of those arrive through a channel someone has to key by hand... Call it seven thousand eight hundred orders a week being keyed into Swords manually. / Six minutes on average... Voicemails run longer. / roughly forty-seven thousand minutes a week, call it seven hundred and eighty hours, across the division. / forty-six people across the ten sales offices, which fully loaded is about one point six million a year. / Peak overtime... came to about a hundred and ninety thousand last year. / Credits, re-picks and write-offs traced back to order and pricing errors are running at about one point two percent of division revenue, which on two hundred and forty million is about two point eight million a year. / The value creation plan gives the division two years to put a hundred and fifty basis points on operating margin.",
       "gap": "The annualised error-leakage extrapolation to division level (criterion five) has not yet been built - confirm the methodology one-pager will be ready before the two-week checkpoint on 30 June, not just at final review."
     },
@@ -322,12 +322,12 @@ export const KITWAVE_POV_1: CachedPovFixture = {
       "gap": "Pricing and commercial criteria for the full division rollout have not been discussed - understand whether cost-per-site, per-order, or an enterprise licence model is expected, and whether OEP has a benchmark or ceiling in mind."
     },
     "decision_process": {
-      "score": 3,
+      "score": 2,
       "evidence": "Anything material goes through the monthly portfolio review with OEP, the next ones that matter for us are July and August. / Then the sequencing is, Andrea, a short technical session this week so integration and security are settled before anyone says the word contract, then a setup call with Marcus in the room to lock scope and success criteria, with Lee there too. / If we went live mid-June we'd have four weeks of results by mid-July, which is ahead of the August review. / legal reviews the master agreement only once the pilot reports, and if the evidence holds I take it to the August portfolio review with a recommendation to roll out across the division's ten sites. And I'll say this now, Christmas is Creed's biggest trading window, if we proceed I want the Creed sites live before that peak, so nobody get comfortable in September.",
       "gap": "The identities and influence of other OEP portfolio review participants are unknown - establish who else presents at that review and whether any stakeholder outside this call could raise an objection or request a competing evaluation."
     },
     "paper_process": {
-      "score": 2,
+      "score": 0,
       "evidence": "I'd rather find the problems now than in a procurement thread in August. / The DPA is with our procurement now to run in parallel, on my insistence, I'm not having security paperwork become the critical path in August. / legal reviews the master agreement only once the pilot reports.",
       "gap": "The full procurement and legal sign-off timeline is still unclear - confirm how long Kitwave's legal review of the master agreement typically takes once triggered, whether there is a procurement committee above a certain contract value, and who owns final signature authority."
     },
@@ -346,7 +346,7 @@ export const KITWAVE_POV_1: CachedPovFixture = {
       "evidence": "What about the REKKI attempt at High Wycombe? I wasn't close to it, but the residue of it is that people here think this category doesn't work. / REKKI reads email and app-style orders reasonably well. It does nothing for phone and voicemail, which for you is roughly half of everything, and it had no path into Swords, so even what it did capture got re-keyed, which means it added a step instead of removing one. / That framing will land better with the group exec than 'your portal failed', for what it's worth. / my sales office has heard the word pilot before, REKKI's ghost still walks at High Wycombe.",
       "gap": "It is unknown whether OEP or any other Kitwave division is currently evaluating alternative vendors for a comparable capability - confirm at the two-week checkpoint whether any parallel RFP or informal market scan is underway at group level."
     },
-    "overall_score": 22,
+    "overall_score": 18,
     "summary": "This is a high-conviction deal in controlled execution: the Economic Buyer is personally present and committed to the August portfolio review, seven quantified success criteria are signed off in the room, and the champion has already navigated the internal landscape to get Choco to POV stage. The primary remaining risk is paper process - legal review of the master agreement has not been scoped for duration or approval authority, and a slow procurement thread post-pilot could compress the window between August approval and the Christmas deadline Marcus has already set for the Creed sites.",
     "suggested_questions": {
       "sc_intro": [
@@ -404,8 +404,8 @@ export const KITWAVE_POV_1: CachedPovFixture = {
   "totalAgreed": 7,
   "delta": {
     "metrics": {
-      "prev": 3,
-      "curr": 3,
+      "prev": 1,
+      "curr": 1,
       "change": 0
     },
     "economic_buyer": {
@@ -414,19 +414,19 @@ export const KITWAVE_POV_1: CachedPovFixture = {
       "change": 0
     },
     "decision_criteria": {
-      "prev": 3,
+      "prev": 2,
       "curr": 3,
-      "change": 0
+      "change": 1
     },
     "decision_process": {
-      "prev": 3,
-      "curr": 3,
-      "change": 0
-    },
-    "paper_process": {
       "prev": 1,
       "curr": 2,
       "change": 1
+    },
+    "paper_process": {
+      "prev": 0,
+      "curr": 0,
+      "change": 0
     },
     "identify_pain": {
       "prev": 3,
@@ -434,18 +434,18 @@ export const KITWAVE_POV_1: CachedPovFixture = {
       "change": 0
     },
     "champion": {
-      "prev": 3,
+      "prev": 2,
       "curr": 3,
-      "change": 0
+      "change": 1
     },
     "competition": {
       "prev": 3,
       "curr": 3,
       "change": 0
     },
-    "overall_prev": 22,
-    "overall_curr": 22,
-    "overall_change": 0
+    "overall_prev": 15,
+    "overall_curr": 18,
+    "overall_change": 3
   },
   "povAssessment": [
     {
@@ -657,7 +657,7 @@ export const KITWAVE_POV_1: CachedPovFixture = {
 export const KITWAVE_POV_2: CachedPovFixture = {
   "meddpicc": {
     "metrics": {
-      "score": 3,
+      "score": 2,
       "evidence": "Conservatively stated, about one point two million a year in prevented leakage at division level, methodology one-pager to follow with inclusions and exclusions. / We're at three point four minutes average, so a forty-three percent reduction against a fifty percent target. / Week two cutoff compliance on the pilot book ran one point eight points higher than the four-week average before go-live.",
       "gap": "Methodology one-pager is promised but not yet delivered - confirm it lands with Marcus by 7 July and that OEP will accept the conservative discounting approach before the August portfolio review."
     },
@@ -677,7 +677,7 @@ export const KITWAVE_POV_2: CachedPovFixture = {
       "gap": "Legal has not yet reviewed the master agreement - confirm the DPA parallel-track is still on schedule and that legal review timing will not compress the window between the 14 July pilot report and the August OEP review."
     },
     "paper_process": {
-      "score": 2,
+      "score": 1,
       "evidence": "I'd rather find the problems now than in a procurement thread in August. / The DPA is with our procurement now to run in parallel, on my insistence, I'm not having security paperwork become the critical path in August. / legal reviews the master agreement only once the pilot reports.",
       "gap": "No update on DPA or procurement status in this call. Confirm the DPA has progressed, identify who in legal signs off the master agreement, and establish whether any commercial redlines are anticipated that could delay execution after the August portfolio review."
     },
@@ -696,8 +696,8 @@ export const KITWAVE_POV_2: CachedPovFixture = {
       "evidence": "What about the REKKI attempt at High Wycombe? I wasn't close to it, but the residue of it is that people here think this category doesn't work. / REKKI reads email and app-style orders reasonably well. It does nothing for phone and voicemail, which for you is roughly half of everything, and it had no path into Swords, so even what it did capture got re-keyed, which means it added a step instead of removing one. / my sales office has heard the word pilot before, REKKI's ghost still walks at High Wycombe.",
       "gap": "No competitor re-emerged in this call. Confirm whether any other vendors are being evaluated at group or OEP level ahead of the August review, particularly given the portfolio-wide rollout decision that follows."
     },
-    "overall_score": 22,
-    "summary": "This deal is in excellent shape heading into the final pilot review: all eight MEDDPICC elements are evidenced at score 2 or above, the economic buyer is actively present and shaping the success narrative, and live pilot data is directionally validating the original pain and metrics case. The one live risk is the duplicate-code open item, which must be closed with written verification before 14 July - Marcus has explicitly flagged that OEP finding it unfixed would be a credibility problem, so this is the single critical path action. Paper process is the only element below a 3 due to silence on DPA and legal progress; confirming those are tracking is the priority ask before the methodology one-pager lands on 7 July.",
+    "overall_score": 21,
+    "summary": "This deal is in strong shape heading into the final pilot review: economic buyer, decision criteria, decision process, identify pain, champion, and competition are all fully evidenced, metrics are now substantially quantified from the two-week measured results, and live pilot data is directionally validating the original pain and metrics case. The one live risk is the duplicate-code open item, which must be closed with written verification before 14 July - Marcus has explicitly flagged that OEP finding it unfixed would be a credibility problem, so this is the single critical path action. Paper process remains the one element still lagging, due to continued silence on DPA and legal progress; confirming those are tracking is the priority ask before the methodology one-pager lands on 7 July.",
     "suggested_questions": {
       "sc_intro": [
         "Did the sales office team hear about the pilot outcome, and what was their reaction?",
@@ -735,9 +735,9 @@ export const KITWAVE_POV_2: CachedPovFixture = {
   "totalAgreed": null,
   "delta": {
     "metrics": {
-      "prev": 3,
-      "curr": 3,
-      "change": 0
+      "prev": 1,
+      "curr": 2,
+      "change": 1
     },
     "economic_buyer": {
       "prev": 3,
@@ -750,14 +750,14 @@ export const KITWAVE_POV_2: CachedPovFixture = {
       "change": 0
     },
     "decision_process": {
-      "prev": 3,
+      "prev": 2,
       "curr": 3,
-      "change": 0
+      "change": 1
     },
     "paper_process": {
-      "prev": 2,
-      "curr": 2,
-      "change": 0
+      "prev": 0,
+      "curr": 1,
+      "change": 1
     },
     "identify_pain": {
       "prev": 3,
@@ -774,9 +774,9 @@ export const KITWAVE_POV_2: CachedPovFixture = {
       "curr": 3,
       "change": 0
     },
-    "overall_prev": 22,
-    "overall_curr": 22,
-    "overall_change": 0
+    "overall_prev": 18,
+    "overall_curr": 21,
+    "overall_change": 3
   },
   "povAssessment": [
     {
@@ -964,7 +964,7 @@ export const KITWAVE_POV_3: CachedPovFixture = {
       "gap": "Confirm the exact August portfolio review date so the legal turnaround timeline can be back-planned with precision."
     },
     "paper_process": {
-      "score": 3,
+      "score": 1,
       "evidence": "The DPA's in place and carries across sites, so it's the master agreement through your legal and a rollout schedule we'd build with Andrea and Lee. Proposal with you by Friday, and if your legal can turn it while the portfolio review lands, contract and rollout can both be moving in August.",
       "gap": "Identify the named legal contact and confirm whether procurement needs to counter-sign alongside legal, and whether any OEP-level approval threshold applies to the contract value."
     },
@@ -983,7 +983,7 @@ export const KITWAVE_POV_3: CachedPovFixture = {
       "evidence": "REKKI reads email and app-style orders reasonably well. It does nothing for phone and voicemail, which for you is roughly half of everything, and it had no path into Swords, so even what it did capture got re-keyed, which means it added a step instead of removing one. / my sales office has heard the word pilot before, REKKI's ghost still walks at High Wycombe.",
       "gap": "As rollout expands to nine additional sites, validate whether any site-level managers at Creed, Staverton, Ilkeston or High Wycombe have existing vendor relationships or preferences that could resurface competitive friction."
     },
-    "overall_score": 23,
+    "overall_score": 22,
     "summary": "This deal is effectively closed in all but contract signature: seven-for-seven pilot success criteria met, the economic buyer has publicly redirected the August portfolio review from evaluation to rollout approval, and the DPA is already in place across sites. The only remaining execution risk is legal turnaround speed relative to the August review date and Christmas go-live deadline for the Creed sites - the Choco team should lock the exact portfolio review date this week and name a legal counterpart at Kitwave to eliminate any paperwork critical path.",
     "suggested_questions": {
       "sc_intro": [
@@ -1027,9 +1027,9 @@ export const KITWAVE_POV_3: CachedPovFixture = {
   "totalAgreed": null,
   "delta": {
     "metrics": {
-      "prev": 3,
+      "prev": 2,
       "curr": 3,
-      "change": 0
+      "change": 1
     },
     "economic_buyer": {
       "prev": 3,
@@ -1047,9 +1047,9 @@ export const KITWAVE_POV_3: CachedPovFixture = {
       "change": 0
     },
     "paper_process": {
-      "prev": 2,
-      "curr": 3,
-      "change": 1
+      "prev": 1,
+      "curr": 1,
+      "change": 0
     },
     "identify_pain": {
       "prev": 3,
@@ -1066,8 +1066,8 @@ export const KITWAVE_POV_3: CachedPovFixture = {
       "curr": 3,
       "change": 0
     },
-    "overall_prev": 22,
-    "overall_curr": 23,
+    "overall_prev": 21,
+    "overall_curr": 22,
     "overall_change": 1
   },
   "povAssessment": [
@@ -1276,7 +1276,7 @@ export const KITWAVE_VE: CachedVeFixture = {
       "gap": "Clarify the exact date of the August portfolio review and who else presents or votes on it beyond Marcus, to ensure no surprises in the room."
     },
     "paper_process": {
-      "score": 3,
+      "score": 1,
       "evidence": "Jordan's side, but as of Friday the proposal's with your legal, and Andrea's already scoped Staverton and Ilkeston, High Wycombe's booked for next week. Nothing on my side blocks contract, and nothing on the value case waits for it.",
       "gap": "Confirm legal turnaround timeline and whether Kitwave's legal team has flagged any outstanding redlines on the master agreement that could delay execution alongside the August review."
     },
@@ -1295,8 +1295,8 @@ export const KITWAVE_VE: CachedVeFixture = {
       "evidence": "REKKI reads email and app-style orders reasonably well. It does nothing for phone and voicemail, which for you is roughly half of everything, and it had no path into Swords, so even what it did capture got re-keyed, which means it added a step instead of removing one. / my sales office has heard the word pilot before, REKKI's ghost still walks at High Wycombe.",
       "gap": "Confirm no new competitive vendor has been introduced at the portfolio review level above Marcus, particularly given the acquisition-heavy group structure that may have other divisional incumbents."
     },
-    "overall_score": 24,
-    "summary": "This deal is at maximum MEDDPICC maturity: every element is explicitly confirmed, the business case has been stress-tested and triangulated from three independent data directions, legal is already in motion, and the economic buyer is personally driving the August portfolio review with Choco as the lead initiative. The only residual risks are external to the sales process-legal turnaround speed and whether the portfolio review panel introduces any last-minute evaluation criteria-both of which should be actively monitored but neither undermines the current position.",
+    "overall_score": 22,
+    "summary": "This deal is at very high MEDDPICC maturity heading into the portfolio review: metrics, economic buyer, decision criteria, decision process, identify pain, champion, and competition are all fully evidenced and the business case has been stress-tested and triangulated from three independent data directions. Paper process remains the one element not yet fully closed out, though legal is now in motion and the economic buyer is personally driving the August portfolio review with Choco as the lead initiative. The only residual risks are external to the sales process-legal turnaround speed and whether the portfolio review panel introduces any last-minute evaluation criteria-both of which should be actively monitored but neither undermines the current position.",
     "suggested_questions": {
       "sc_intro": [
         "Did the August portfolio review go ahead as planned, and how did the room receive the case?",
@@ -1520,8 +1520,8 @@ export const KITWAVE_VE: CachedVeFixture = {
       "change": 0
     },
     "paper_process": {
-      "prev": 3,
-      "curr": 3,
+      "prev": 1,
+      "curr": 1,
       "change": 0
     },
     "identify_pain": {
@@ -1539,9 +1539,9 @@ export const KITWAVE_VE: CachedVeFixture = {
       "curr": 3,
       "change": 0
     },
-    "overall_prev": 23,
-    "overall_curr": 24,
-    "overall_change": 1
+    "overall_prev": 22,
+    "overall_curr": 22,
+    "overall_change": 0
   },
   "risks": [
     {
