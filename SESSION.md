@@ -1,5 +1,235 @@
 # Session log
 
+## Current state (2026-07-09, Kitwave call-stage demo cache + deal page reorder)
+
+Continuation of the same day, after the VE DOCX work below. User sent a new 3-item
+build list (`Untitled document.pdf`): speed up analysis stages for the demo,
+promote exec summary above the fold, move the next-step CTA higher. Items 2+3
+were unambiguous UI reorders, done directly. Item 1 turned out to be a much
+bigger build once scoped with the user -- extending the existing Kitwave
+research+prep demo cache to the four remaining analysis stages (post-call,
+POV x3, VE workshop), baked from five real call transcripts the user provided
+mid-session (`~/Desktop/02-06 - *.pdf`, all still on disk there).
+
+**Items 2+3 (`deal-view.tsx`):** the next-step CTA block (first-call
+choice/post-call/POV/POV+VE) moved from below `StakeholdersCard` to directly
+under `DealProgressBar`. The full tabbed research view (`ResearchBriefFullView`
+-- exec summary + one tab per section, i.e. already-hyperlinked "click to dig
+deeper") is now also rendered at the top of the page, between the CTA and
+`StakeholdersCard`, whenever `briefs.length === 0 && researchBriefs.length > 0`
+(research just ran, no call logged yet) -- exact order asked for: timeline ->
+CTA -> exec summary. Once a brief exists it's gone from the top and lives only
+in the Research tab below, as before. No new "hyperlink" mechanism was built --
+the promoted component already has a tab bar as its first element, which
+satisfies "click to dig deeper" directly.
+
+**Item 1, after clarifying scope with the user** (multiSelect: all of
+post-call/POV/VE, not just research; approach: extend the fixture pattern using
+real transcripts the user would paste in, not synthesize speed via prompt/model
+changes): built a second demo-cache layer, `getCachedCall`/`emitCachedPostCall`/
+`emitCachedPov`/`emitCachedVe`/`matchCachedCompletedTasks` in `research.ts`,
+fixture data in new `src/lib/demo-fixtures/kitwave-calls.ts`.
+
+**How the fixture data was generated -- same discipline as the original Kitwave
+research+prep fixture, nothing hand-authored:** a temporary debug route
+(`/api/debug/kitwave-calls`, deleted after use) called the real `analysis.ts`
+functions directly against the five real transcripts, chaining
+prevBrief/criteria/openTasks state by hand exactly as the real routes do
+(post-call's prevBrief = the existing Kitwave `KITWAVE_MEDDPICC` prep brief;
+each POV call's prevBrief = the previous stage's own output; VE's prevBrief =
+POV call 3). ~40 real Claude calls, took about 6 minutes end to end, written to
+scratchpad JSON per stage as it went. Verified real behaviour, not fabricated:
+POV call 1 genuinely surfaced 7 agreed criteria and the app's 5-cap correctly
+kept 5 while `total_agreed: 7` recorded the rest (the exact documented overflow
+behaviour, not something contrived for the demo); POV assessment status
+progression is genuine (criteria 1-2 `in_progress` at the two-week checkpoint,
+all 5 `met` by final review, matching the transcript's own narrative); VE
+baseline extracted all 12 workshop data points with correct category/direction
+tagging and the £2.8M/£1.7M/£1.4M leakage figures cross-referencing correctly
+across calls. One schema gap found and fixed by hand before baking: a single
+risk item in the post-call output was missing `severity` (a genuine, if rare,
+LLM output gap) -- filled from the same risk's `severity: "medium"` in a later
+stage's more complete re-statement of the same risk, rather than guessing.
+
+**The non-obvious wiring problem:** `detectCompletedTasks`'s output references
+task ids, but the debug run's ids were synthetic (`t1`, `t2`...) and don't exist
+in production -- real `deal_tasks` rows only get their real ids once an earlier
+cached stage's own `actions` are actually inserted. Solved by remapping the
+baked fixture's completed-task list from id to description text at bake time
+(`CachedCompletedTask { description, evidence }`), then `matchCachedCompletedTasks`
+matches against whatever's actually open in the DB at cache-serving time by
+description equality. All three routes (`post-call/route.ts`, `pov-analysis.ts`'s
+`runSinglePovAnalysis` -- shared by both the single-call and batch POV routes,
+`value-engineering/route.ts`) branch on `getCachedCall(transcript)` right where
+real generation would start, matched by the pasted transcript's own distinctive
+title line (e.g. `/Trial Setup Call/i`) since these routes take a transcript,
+not a company name. Both branches converge on the same DB-write tail
+unchanged, so cached and live runs are indistinguishable downstream. Pacing:
+6-8 emitted steps per stage at 1700-2000ms each, landing every stage inside the
+requested 10-20s window (post-call ~12s, POV ~12.6-14.4s, VE ~13.6s).
+
+**Verified live** (Chrome extension wouldn't connect again, same flakiness as
+every recent session -- fallback debug-route-plus-curl pattern used
+successfully again): a second temporary debug route
+(`/api/debug/kitwave-integration-test`, deleted after use) created a real
+throwaway "Kitwave Group" deal under the Choco product-context user, ran it
+through the actual production code (not copies) for all 4 stages -- POV
+specifically via the real unmodified `runSinglePovAnalysis` -- and confirmed:
+briefs saved in the correct stage order with the correct real call dates from
+the transcripts (27 May / 9 June / 30 June / 14 July / 22 July), and most
+importantly that `matchCachedCompletedTasks` genuinely matches against
+real DB-assigned UUIDs (0/8/6/9/2 tasks matched done across the five stages,
+44 tasks total accumulated, 25 ultimately marked done by the end -- a rich,
+realistic task lifecycle). Deal deleted in a `finally` block; confirmed via a
+fresh `supabaseAdmin` query afterward that only the two real deals
+(Luminary Brands, Bramwell Fine Foods Ltd) remain and zero Kitwave briefs are
+left over. Both debug routes confirmed removed from the `next build` route
+manifest before finishing.
+
+`npx tsc --noEmit`, `npx eslint` (all touched files individually clean, no new
+issues on the full `src/` sweep beyond the same pre-existing baseline noted in
+every recent entry), and `npx next build` all clean throughout, including
+after final cleanup.
+
+**Not yet live-browser-tested**: the actual `VePublishSection`-style UI
+experience of pasting one of these five transcripts into the real
+post-call/POV/VE forms and watching the paced streaming UI -- the integration
+test above proves the backend logic end-to-end (cache match, pacing steps,
+task completion, brief/stage progression) but not what it feels like/looks
+like in the browser. Should be the first thing clicked through next session,
+or by the user directly, before relying on this in the actual demo.
+
+### Outstanding
+- **Live click-test the full Kitwave call-stage demo** end to end in a real
+  browser session (paste each of the 5 transcripts into the real forms in
+  order) -- this is now the single most important pre-demo verification, on
+  top of the research-first-flow click-test already outstanding from
+  2026-07-08.
+- The research-first flow / optional-Prep CTA (2026-07-08) still not
+  live-click-tested -- unrelated to this session, still outstanding.
+- VE document upload/download/revert (see entry below) also still needs a
+  real browser click-test.
+- seagent.co.uk DNS still not pointed to Vercel; Privacy page still says
+  "SE Prep".
+- Decide whether to commit and push everything from today (VE DOCX + this
+  entry) -- nothing pushed yet, working tree has the full diff.
+
+## Current state (2026-07-09, VE report PDF -> DOCX, item 4 of "Improvements to SE Agent")
+
+Picked up from the 2026-07-08 handoff. Built item 4, the last unbuilt item from
+the "Improvements to SE Agent" doc: switch the VE proposal export from PDF to
+an editable DOCX, add a download button (already existed, retargeted), and add
+a re-upload feature so an SC can download the generated DOCX, tidy it up
+offline in Word, and re-upload it as the new downloadable artifact -- exactly
+as the user specified back on 2026-07-08 (store the upload as-is, never
+re-parse edits back into `ve_proposal`).
+
+**Migration v10** (confirmed run by the user in the Supabase SQL editor,
+verified via a live REST select afterward): `deals.ve_document_uploaded_at`
+(timestamptz, nullable) -- null means "generate fresh from `ve_proposal` on
+every download", set means "an SC uploaded an override, serve that instead."
+
+**New Supabase Storage bucket `ve-documents`** (this codebase's first use of
+Storage) -- created via `supabaseAdmin.storage.createBucket`, private,
+DOCX-mimetype-only, 10MB limit, no RLS policies (every access goes through
+`supabaseAdmin` in the API routes, which check deal ownership against the
+authenticated session first, same pattern the rest of the app uses for
+service-role operations). Deterministic path per deal: `{deal_id}/ve-proposal.docx`
+-- no history kept, upload always overwrites, matching "the new downloadable
+artifact" from the spec rather than a versioned archive.
+
+**What shipped:**
+1. `src/lib/ve-document.ts` -- `buildVeProposalDocx` using the new `docx`
+   dependency, mirrors the old PDF's content and colour palette (green/navy,
+   driver cards, confidence badges) but as an editable Word doc instead of a
+   flattened PDF. Bar-chart driver viz (SVG in the PDF) simplified to a text
+   line -- not worth reproducing as a docx chart/image for a doc meant to be
+   edited, not viewed as a polished artifact.
+2. **Removed** `@react-pdf/renderer` entirely (was only used by the VE PDF
+   route, confirmed via grep before removing) -- deleted
+   `ve-proposal.pdf/route.tsx`, uninstalled the package, dropped it from
+   `next.config.ts`'s `serverExternalPackages`. This was a genuine swap, not
+   an addition -- item 4 said "switch," so no PDF option was left behind.
+3. New `src/app/api/deals/[id]/ve-document/route.ts` -- GET (serves uploaded
+   override if `ve_document_uploaded_at` set, else generates), POST (multipart
+   upload, .docx-only, 10MB cap, upserts to storage, sets the timestamp),
+   DELETE (removes the storage object, clears the timestamp, reverting
+   downloads to generated). DB writes go through the normal RLS-scoped
+   `supabase` client after an ownership check; only the storage calls use
+   `supabaseAdmin`, since the bucket has no policies of its own.
+4. `deal-view.tsx`'s `VePublishSection`: "Download PDF" -> "Download DOCX"
+   (same link position, new route), plus a new "Replace with edited version"
+   file-input control and a "Revert to generated" action that appears once an
+   override exists. Kept as inline text-link-style controls to match the
+   existing "Download PDF" link's visual weight rather than adding new
+   heavyweight buttons to an already-busy card.
+5. `AGENTS.md` updated in the same session (schema v10, new routes, new "VE
+   document generation" section replacing "PDF generation", new **VE
+   document** glossary entry) -- did not repeat the gap from 2026-07-08
+   morning where a shipped feature went undocumented for most of a day.
+
+**Verified live**, via the same debug-route-plus-curl fallback used
+successfully in prior sessions (Claude's Chrome extension would not connect
+this session either -- `tabs_context_mcp` returned "not connected", consistent
+with the flakiness noted in every recent entry). Rather than spend real
+Anthropic API calls running a full VE workshop analysis just to get a
+`ve_proposal` to test against (neither Luminary Brands nor Bramwell has one
+saved), temporarily seeded a synthetic, clearly-labelled
+("TEST FIXTURE - DO NOT DEMO") proposal onto Luminary Brands via
+`supabaseAdmin`, added a temporary unauthenticated debug route mirroring the
+real route's exact logic, and confirmed via curl:
+- `file` identifies the GET response as a genuine "Microsoft Word 2007+"
+  document; unzipping and extracting `word/document.xml` text confirmed every
+  proposal field (headline, drivers, confidence, risks, next step) rendered
+  correctly.
+- POSTing a modified `.docx` then GETting again returned a byte-identical copy
+  of the uploaded file (`x-debug-source: uploaded`), confirming the override
+  path is genuinely served, not silently ignored.
+- DELETE reverted correctly -- the next GET reported `x-debug-source: generated`
+  again and the extracted text matched the original generated version exactly
+  (raw bytes differed by a few bytes, traced to `docx`'s own non-deterministic
+  zip metadata/timestamps, not a content bug).
+- Cleaned up fully afterward: cleared the seeded `ve_proposal` back to null on
+  Luminary Brands, removed the test storage object, deleted the temporary
+  debug route. Confirmed via a fresh `supabaseAdmin` select that both real
+  deals are back to their pre-session state (`ve_proposal: null,
+  ve_document_uploaded_at: null`).
+
+**Not yet click-tested through the real browser UI/auth flow** -- the
+debug-route method verifies the exact same underlying logic (same storage
+path convention, same `buildVeProposalDocx` call, same `supabaseAdmin`
+storage calls) but doesn't exercise the actual `VePublishSection` buttons,
+the real session-cookie auth path on the real routes, or what the file input
+UX feels like in practice. Worth a real click-through next time Chrome
+connects, or manually by the user, before relying on it in the actual demo --
+generate a real VE proposal on a throwaway/test deal first since neither real
+deal has one yet.
+
+`npx tsc --noEmit` and `npx next build` clean throughout (confirmed again
+after cleanup, with the debug route removed, to make sure nothing about the
+temporary route had leaked into the manifest). `npx eslint src/` shows the
+same pre-existing baseline issues as documented in the 2026-07-08 entry below
+(the `deal-view.tsx` line ~1161 setState-in-effect and unused `dealId`
+warning, plus a few other long-standing warnings elsewhere) -- confirmed via
+`git diff` that none of them are new.
+
+**Not committed yet** -- working tree has the full diff, nothing pushed. Dev
+server still running locally on port 3000 (started this session, not yet
+stopped).
+
+### Outstanding
+- **Real browser click-test of the VE document upload/download/revert UI**
+  still needed -- see above, the debug-route verification covers the backend
+  logic but not the actual UI/auth path.
+- Decide whether to commit and push this session's work.
+- seagent.co.uk DNS still not pointed to Vercel.
+- Privacy page still says "SE Prep" -- needs a rename pass.
+- The research-first flow / optional-Prep CTA (built 2026-07-08) is still not
+  live-click-tested end to end -- carried over, unrelated to this session's
+  work but still the bigger demo-readiness gap.
+- Multi-call POV batch save path (the actual save, not just classify) still
+  not dry-run against real data.
+
 ## Current state (2026-07-08, live demo QA pass on the research-first flow — shutdown, session closed)
 
 **Session ended cleanly, dev server stopped, working tree clean, everything pushed
