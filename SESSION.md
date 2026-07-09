@@ -1,5 +1,98 @@
 # Session log
 
+## Current state (2026-07-09, shutdown — pushed, deployed, MEDDPICC pacing fix)
+
+**Session ended cleanly, dev server stopped, working tree clean, everything
+pushed and confirmed live.** Continues directly from the entries below (same
+day): VE DOCX export, the Kitwave call-stage demo cache, and the deal page
+reorder were all built earlier in the day but sat uncommitted until this
+closing stretch — the user asked to push once they noticed the live site
+didn't reflect any of it (nothing had been pushed yet, a real gap worth
+remembering: committing locally is not the same as it being live, and this
+project's Vercel deploy only triggers on push to `origin/main`, not on
+commit).
+
+### What happened this closing stretch, in order
+1. **Committed and pushed everything from earlier in the day**, split into 4
+   logical commits rather than one giant one: VE DOCX export (`df23557`),
+   Kitwave call-stage demo cache (`9a36e97`), deal page reorder (`ec6254b`),
+   docs (`29a258c`). Verified `Ready` + aliased to `se-prep-web.vercel.app`
+   before telling the user anything was live — same discipline as every prior
+   session.
+2. **Revisited the "SE Agent" stage-value narrative doc** the user had
+   previously codified stage-by-stage (`~/Downloads/SE Agent (1).pdf`) against
+   everything shipped since it was written. Two real gaps found: Prospect
+   Research wasn't mentioned as a stage at all (it now genuinely comes before
+   Prep and changes what Prep even starts from), and Stage 4 (VE) still said
+   "PDF" throughout. Wrote an updated version to `~/Downloads/SE Agent (2).md`
+   as a 5-stage narrative (new Stage 1: Prospect Research, Prep now marked
+   explicitly optional, post-call now genuinely can be the first call logged,
+   POV left as-is after verifying the "manual override" claim against the
+   code, VE updated to DOCX + the upload/re-publish workflow). Not yet
+   reviewed by the user stage-by-stage the way the original was built --
+   flagged as a next step, not something to treat as final.
+3. **Fixed the Kitwave demo's MEDDPICC pacing** (`d114e6a`) -- the user
+   caught that it jumped from 50/100 at Prep to ~92/100 by the very next call
+   and flatlined near-max for the rest of the deal, an artefact of the real
+   underlying transcripts being extremely strong evidence throughout (the
+   whole reason Kitwave was chosen as the demo company). Specified target
+   displayed scores (AE call 50, SC call 62, POV1 73, POV2 86, POV3 90, VE
+   flat at 90). Since the internal scale is 0-24 (8 elements x 0-3) displayed
+   via `Math.round(raw/24*100)`, only 25 discrete percentages are reachable --
+   confirmed with the user which nearest achievable values to use (**50 / 63 /
+   75 / 88 / 92 / 92**) before touching anything, and confirmed the JS
+   `Math.round` behaviour specifically (Python's `round()` gives a different,
+   wrong answer on the exact `.5` case at raw=15 -- 62 vs 63 -- due to
+   banker's-rounding vs round-half-up; verified with `node -e` directly rather
+   than trusting the Python spot-check). User also asked to rebalance the
+   underlying 8 MEDDPICC elements per stage, not just the headline
+   `overall_score` field, since `overall_score` is trusted directly everywhere
+   it's displayed (confirmed via grep -- header badge, score history table,
+   and each brief's own delta card all read `meddpicc.overall_score` directly,
+   never recomputed from summing the 8 elements) but a sharp viewer opening
+   the per-element breakdown grid would still see the old near-maxed values if
+   only the headline number changed. Rebalanced all 8 elements across all 5
+   post-Prep stages by hand, keeping `paper_process` deliberately lagging
+   throughout (consistent with the "no paper process visibility" risk already
+   present in the risk fixtures -- a genuine cross-consistency win, not just a
+   coincidence), monotonic non-decreasing per element (matches the app's own
+   MEDDPICC carry-forward rule), and every `delta` object recomputed to match.
+   Caught and fixed two `summary` text fields that had gone factually wrong
+   once elements were rebalanced -- POV_2 claimed "all eight elements at 2 or
+   above" and VE claimed "every element explicitly confirmed", neither true
+   anymore with `paper_process` deliberately held at 1/3 -- rewrote both
+   rather than leaving a contradiction between the prose and the numbers.
+   Evidence/gap text per element was deliberately left untouched throughout
+   (still genuine, verbatim-grounded content) -- only the numeric `score` and
+   `summary` framing changed, which does mean a couple of elements now carry
+   real strong-evidence text next to a deliberately conservative score number;
+   flagged as an accepted trade-off, not hidden.
+
+### Verified
+`tsc`/`eslint`/`next build` clean after every step. Confirmed via a small
+Python cross-check script that every stage's 8 element scores sum exactly to
+that stage's `overall_score` field, and every `delta.overall_prev/curr` chains
+correctly to the adjacent stage's `overall_score` (no drift). Pushed and
+confirmed `Ready` + aliased on `se-prep-web.vercel.app` (`vercel ls` /
+`vercel inspect`), same verification standard as every commit this session.
+
+### Outstanding
+- **Live click-test the full Kitwave call-stage demo** end to end in a real
+  browser session (paste each of the 5 transcripts into the real forms in
+  order, confirm the MEDDPICC progression now reads as gradual on screen, not
+  just in the data) -- still the single most important pre-demo verification,
+  carried over from the entry below.
+- **`~/Downloads/SE Agent (2).md`** -- the updated stage-value narrative --
+  hasn't been walked through with the user the way the original was built.
+  Treat as a draft, not final copy, until reviewed together.
+- The research-first flow / optional-Prep CTA (2026-07-08) still not
+  live-click-tested end to end -- unrelated to this session, still
+  outstanding.
+- VE document upload/download/revert also still needs a real browser
+  click-test.
+- seagent.co.uk DNS still not pointed to Vercel; Privacy page still says "SE
+  Prep".
+
 ## Current state (2026-07-09, Kitwave call-stage demo cache + deal page reorder)
 
 Continuation of the same day, after the VE DOCX work below. User sent a new 3-item
