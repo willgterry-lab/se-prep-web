@@ -200,6 +200,9 @@ export interface Deal {
   ve_proposal: VeProposal | null
   ve_slider_inputs: VeSliderInputs | null
   ve_published: boolean
+  // Set when an SC has replaced the generated VE proposal DOCX with an
+  // offline-edited version. Null means downloads should generate on the fly.
+  ve_document_uploaded_at: string | null
   created_at: string
   updated_at: string
 }

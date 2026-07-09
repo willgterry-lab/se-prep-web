@@ -275,3 +275,14 @@ create policy "Users manage own research briefs"
   on public.research_briefs for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+
+-- ─── Migration v10: VE document upload override ───────────────────────────────
+-- Run this block in the Supabase SQL editor on existing installs.
+
+-- When set, an SC has replaced the generated VE proposal DOCX with an
+-- offline-edited version (uploaded to the ve-documents storage bucket at a
+-- deterministic path, {deal_id}/ve-proposal.docx). Null means "no override
+-- yet -- generate the DOCX from deals.ve_proposal on every download".
+alter table public.deals
+  add column if not exists ve_document_uploaded_at timestamptz;
